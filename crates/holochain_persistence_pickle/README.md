@@ -1,4 +1,4 @@
-# lib3h_persistence_pickle
+# holochain_persistence_pickle
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
 [![Chat](https://img.shields.io/badge/chat-chat%2eholochain%2enet-blue.svg?style=flat-square)](https://chat.holochain.net)
@@ -9,13 +9,13 @@
 
 ## Overview
 
-[pickledb](https://github.com/seladb/pickledb-rs) persistence implementation for lib3h and holochain. Provides content addressable storage (CAS) and entity attribute value (index) using pickledb's key/value store.
+[pickledb](https://github.com/seladb/pickledb-rs) persistence implementation for holochain. Provides content addressable storage (CAS) and entity attribute value (index) using pickledb's key/value store.
 
 ## Usage
-Add `lib3h_persistence_pickle` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
+Add `holochain_persistence_pickle` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
 
 ```rust
-use lib3h_persistence_file::cas::pickle::PickleStorage;
+use holochain_persistence_file::cas::pickle::PickleStorage;
 use tempfile::tempdir;
 
 pub fn init() -> PickleStorage {

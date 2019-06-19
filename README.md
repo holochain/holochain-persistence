@@ -1,4 +1,4 @@
-# lib3h
+# holochain-persistence
 
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
@@ -10,8 +10,7 @@
 
 ## Overview
 
-The lib3h p2p communication rust library.
-
+The holochain persistence library. Provides content addressable storage (CAS) and entity value attribute index (EAVI) style apis.
 
 ## License
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)

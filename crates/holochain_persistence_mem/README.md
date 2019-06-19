@@ -1,4 +1,4 @@
-# lib3h_persistence_mem
+# holochain_persistence_mem
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
 [![Chat](https://img.shields.io/badge/chat-chat%2eholochain%2enet-blue.svg?style=flat-square)](https://chat.holochain.net)
@@ -9,14 +9,14 @@
 
 ## Overview
 
-Pure rust, thread safe in memory persistence implementations for lib3h and holochain. Provides content addressable storage (CAS) and entity attribute value (index) associative stores with a pure in memory store.
+Pure rust, thread safe in memory persistence implementations for holochain. Provides content addressable storage (CAS) and entity attribute value (index) associative stores with a pure in memory store.
 
 ## Usage
 
-Add `lib3h_persistence_mem` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
+Add `holochain_persistence_mem` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
 
 ```rust
-use lib3h_persistence_mem::cas::memory::MemoryStore;
+use holochain_persistence_mem::cas::memory::MemoryStore;
 
 fn init() -> MemoryStore {
   let store = MemoryStore::new();

@@ -1,4 +1,4 @@
-# lib3h_persistence_file
+# holochain_persistence_file
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
 [![Chat](https://img.shields.io/badge/chat-chat%2eholochain%2enet-blue.svg?style=flat-square)](https://chat.holochain.net)
@@ -9,14 +9,14 @@
 
 ## Overview
 
-Filesystem persistence implementations for lib3h and holochain. Provides content addressable storage (CAS) and entity attribute value (index) associations using hiearchical based filesystem storage.
+Filesystem persistence implementations for holochain. Provides content addressable storage (CAS) and entity attribute value (index) associations using hiearchical based filesystem storage.
 
 ## Usage
 
-Add `lib3h_persistence_file` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
+Add `holochain_persistence_file` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
 
 ```rust
-use lib3h_persistence_file::cas::file::FilesystemStorage;
+use holochain_persistence_file::cas::file::FilesystemStorage;
 use tempfile::tempdir;
 
 pub fn init() -> FilesystemStorage {

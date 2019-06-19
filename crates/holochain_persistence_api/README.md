@@ -1,4 +1,4 @@
-# lib3h_persistence_api
+# holochain_persistence_api
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
 [![Chat](https://img.shields.io/badge/chat-chat%2eholochain%2enet-blue.svg?style=flat-square)](https://chat.holochain.net)
@@ -9,11 +9,11 @@
 
 ## Overview
 
-A persistence api for lib3h and holochain. Provides abstractions for content addressable storage (CAS) and entity attribute value (index) associative stores.
+A persistence api for holochain. Provides abstractions for content addressable storage (CAS) and entity attribute value (index) associative stores.
 
 ## Usage
 
-This library should be added to `Cargo.toml` as crate `lib3h_persistence_api` in conjunction with a persistence implementation such as `lib3h_persistence_mem`, `lib3h_persistence_file`, or `lib3h_persistence_pickle`.
+This library should be added to `Cargo.toml` as crate `holochain_persistence_api` in conjunction with a persistence implementation such as `holochain_persistence_mem`, `holochain_persistence_file`, or `holochain_persistence_pickle`.
 
 ## Contribute
 
