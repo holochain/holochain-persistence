@@ -31,7 +31,7 @@ use uuid::Uuid;
 /// CAS is append only
 pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug {
     /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
-    fn add(&mut self, content: &AddressableContent) -> PersistenceResult<()>;
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
     /// true if the Address is in the Store, false otherwise.
     /// may be more efficient than retrieve depending on the implementation.
     fn contains(&self, address: &Address) -> PersistenceResult<bool>;
@@ -46,8 +46,8 @@ pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug {
 
 clone_trait_object!(ContentAddressableStorage);
 
-impl PartialEq for ContentAddressableStorage {
-    fn eq(&self, other: &ContentAddressableStorage) -> bool {
+impl PartialEq for dyn ContentAddressableStorage {
+    fn eq(&self, other: &dyn ContentAddressableStorage) -> bool {
         self.get_id() == other.get_id()
     }
 }
@@ -73,7 +73,7 @@ pub fn test_content_addressable_storage() -> ExampleContentAddressableStorage {
 }
 
 impl ContentAddressableStorage for ExampleContentAddressableStorage {
-    fn add(&mut self, content: &AddressableContent) -> PersistenceResult<()> {
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.content
             .write()
             .unwrap()
