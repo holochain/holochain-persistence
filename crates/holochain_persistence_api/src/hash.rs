@@ -46,7 +46,7 @@ impl From<Vec<u8>> for HashString {
 impl TryInto<Vec<u8>> for HashString {
     type Error = rust_base58::base58::FromBase58Error;
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
-        self.0.from_base58().map(|a| Vec::from(a))
+        self.0.from_base58()
     }
 }
 
