@@ -37,6 +37,21 @@ impl<'a> From<&'a str> for HashString {
     }
 }
 
+impl From<Vec<u8>> for HashString {
+    fn from(v: Vec<u8>) -> HashString {
+        let s : String = String::from_utf8_lossy(&v).into_owned();
+        HashString::from(s)
+    }
+}
+
+impl Into<Vec<u8>> for HashString {
+    fn into(self) -> Vec<u8> {
+        println!("u8 into!");
+        let s : String = self.into();
+        Vec::from(s.as_bytes())
+    }
+}
+
 impl HashString {
     pub fn new() -> HashString {
         HashString("".to_string())
@@ -120,4 +135,20 @@ pub mod tests {
                 .to_string(),
         );
     }
+
+ /*   #[test]
+    fn can_convert_hash_to_vec_u8() {
+        let hash_string = HashString::encode_from_str("test data", Hash::SHA2256);
+        let u : Vec<u8> = hash_string.into();
+        assert_eq!(u, [1, 2, 3, 4, 5]);
+    }
+*/
+    #[test]
+    fn can_convert_vec_u8_to_hash() {
+        let i : Vec<u8> = vec![48, 49, 50];
+        let hash_string : HashString = i.into();
+        assert_eq!("012", hash_string.to_string());
+        let u : Vec<u8> = hash_string.into();
+        assert_eq!(u, [48, 49, 50]);
+     }
 }
