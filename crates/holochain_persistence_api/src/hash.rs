@@ -4,8 +4,8 @@
 
 use crate::holochain_json_api::{error::JsonError, json::JsonString};
 use multihash::{encode, Hash};
-use rust_base58::ToBase58;
-use std::fmt;
+use rust_base58::{FromBase58, ToBase58};
+use std::{convert::TryInto, fmt};
 
 // HashString newtype for String
 #[derive(
@@ -39,15 +39,14 @@ impl<'a> From<&'a str> for HashString {
 
 impl From<Vec<u8>> for HashString {
     fn from(v: Vec<u8>) -> HashString {
-        let s: String = String::from_utf8_lossy(&v).into_owned();
-        HashString::from(s)
+        HashString::from(v.to_base58())
     }
 }
 
-impl Into<Vec<u8>> for HashString {
-    fn into(self) -> Vec<u8> {
-        let s: String = self.into();
-        Vec::from(s.as_bytes())
+impl TryInto<Vec<u8>> for HashString {
+    type Error = rust_base58::base58::FromBase58Error;
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        self.0.from_base58().map(|a| Vec::from(a))
     }
 }
 
@@ -139,8 +138,9 @@ pub mod tests {
     fn can_convert_vec_u8_to_hash() {
         let i: Vec<u8> = vec![48, 49, 50];
         let hash_string: HashString = i.into();
-        assert_eq!("012", hash_string.to_string());
-        let u: Vec<u8> = hash_string.into();
-        assert_eq!(u, [48, 49, 50]);
+        assert_eq!("HBrq", hash_string.to_string());
+        let result: Result<Vec<u8>, _> = hash_string.try_into();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), [48, 49, 50]);
     }
 }
