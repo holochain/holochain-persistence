@@ -46,7 +46,6 @@ impl From<Vec<u8>> for HashString {
 
 impl Into<Vec<u8>> for HashString {
     fn into(self) -> Vec<u8> {
-        println!("u8 into!");
         let s: String = self.into();
         Vec::from(s.as_bytes())
     }
