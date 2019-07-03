@@ -37,6 +37,12 @@ impl<'a> From<&'a str> for HashString {
     }
 }
 
+impl<'a> From<&Vec<u8>> for HashString {
+    fn from(v: &Vec<u8>) -> HashString {
+        HashString::from(v.clone())
+    }
+}
+
 impl From<Vec<u8>> for HashString {
     fn from(v: Vec<u8>) -> HashString {
         HashString::from(v.to_base58())
@@ -136,9 +142,11 @@ pub mod tests {
 
     #[test]
     fn can_convert_vec_u8_to_hash() {
-        let i: Vec<u8> = vec![48, 49, 50];
-        let hash_string: HashString = i.into();
+        let v: Vec<u8> = vec![48, 49, 50];
+        let hash_string: HashString = v.clone().into();
         assert_eq!("HBrq", hash_string.to_string());
+        let hash_string_from_ref : HashString = (&v).into();
+        assert_eq!("HBrq", hash_string_from_ref.to_string());
         let result: Result<Vec<u8>, _> = hash_string.try_into();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), [48, 49, 50]);
