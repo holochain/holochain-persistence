@@ -145,7 +145,7 @@ pub mod tests {
         let v: Vec<u8> = vec![48, 49, 50];
         let hash_string: HashString = v.clone().into();
         assert_eq!("HBrq", hash_string.to_string());
-        let hash_string_from_ref : HashString = (&v).into();
+        let hash_string_from_ref: HashString = (&v).into();
         assert_eq!("HBrq", hash_string_from_ref.to_string());
         let result: Result<Vec<u8>, _> = hash_string.try_into();
         assert!(result.is_ok());
