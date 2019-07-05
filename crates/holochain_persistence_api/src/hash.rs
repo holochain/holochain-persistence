@@ -56,6 +56,13 @@ impl TryInto<Vec<u8>> for HashString {
     }
 }
 
+impl<'a> TryInto<Vec<u8>> for &'a HashString {
+    type Error = rust_base58::base58::FromBase58Error;
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        self.clone().try_into()
+    }
+}
+
 impl HashString {
     pub fn new() -> HashString {
         HashString("".to_string())
@@ -147,8 +154,11 @@ pub mod tests {
         assert_eq!("HBrq", hash_string.to_string());
         let hash_string_from_ref: HashString = (&v).into();
         assert_eq!("HBrq", hash_string_from_ref.to_string());
-        let result: Result<Vec<u8>, _> = hash_string.try_into();
+        let result: Result<Vec<u8>, _> = hash_string.clone().try_into();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), [48, 49, 50]);
+        let result_from_ref: Result<Vec<u8>, _> = (&hash_string).try_into();
+        assert!(result_from_ref.is_ok());
+        assert_eq!(result_from_ref.unwrap(), [48, 49, 50]);
     }
 }
