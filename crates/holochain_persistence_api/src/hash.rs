@@ -4,8 +4,8 @@
 
 use crate::holochain_json_api::{error::JsonError, json::JsonString};
 use multihash::{encode, Hash};
-use rust_base58::ToBase58;
-use std::fmt;
+use rust_base58::{FromBase58, ToBase58};
+use std::{convert::TryInto, fmt};
 
 // HashString newtype for String
 #[derive(
@@ -34,6 +34,32 @@ impl From<HashString> for String {
 impl<'a> From<&'a str> for HashString {
     fn from(s: &str) -> HashString {
         HashString::from(s.to_string())
+    }
+}
+
+impl<'a> From<&Vec<u8>> for HashString {
+    fn from(v: &Vec<u8>) -> HashString {
+        HashString::from(v.clone())
+    }
+}
+
+impl From<Vec<u8>> for HashString {
+    fn from(v: Vec<u8>) -> HashString {
+        HashString::from(v.to_base58())
+    }
+}
+
+impl TryInto<Vec<u8>> for HashString {
+    type Error = rust_base58::base58::FromBase58Error;
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        self.0.from_base58()
+    }
+}
+
+impl<'a> TryInto<Vec<u8>> for &'a HashString {
+    type Error = rust_base58::base58::FromBase58Error;
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        self.clone().try_into()
     }
 }
 
@@ -119,5 +145,20 @@ pub mod tests {
             HashString::encode_from_json_string(JsonString::from(Foo { foo: 5 }), Hash::SHA2256)
                 .to_string(),
         );
+    }
+
+    #[test]
+    fn can_convert_vec_u8_to_hash() {
+        let v: Vec<u8> = vec![48, 49, 50];
+        let hash_string: HashString = v.clone().into();
+        assert_eq!("HBrq", hash_string.to_string());
+        let hash_string_from_ref: HashString = (&v).into();
+        assert_eq!("HBrq", hash_string_from_ref.to_string());
+        let result: Result<Vec<u8>, _> = hash_string.clone().try_into();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), [48, 49, 50]);
+        let result_from_ref: Result<Vec<u8>, _> = (&hash_string).try_into();
+        assert!(result_from_ref.is_ok());
+        assert_eq!(result_from_ref.unwrap(), [48, 49, 50]);
     }
 }
