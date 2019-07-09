@@ -75,8 +75,8 @@ where
     }
 }
 
-impl<A: Attribute> PartialEq for EntityAttributeValueStorage<A> {
-    fn eq(&self, other: &EntityAttributeValueStorage<A>) -> bool {
+impl<A: Attribute> PartialEq for dyn EntityAttributeValueStorage<A> {
+    fn eq(&self, other: &dyn EntityAttributeValueStorage<A>) -> bool {
         let query = EaviQuery::default();
         self.fetch_eavi(&query) == other.fetch_eavi(&query)
     }
