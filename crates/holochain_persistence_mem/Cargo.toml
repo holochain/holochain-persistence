@@ -18,7 +18,7 @@ serde_test = "=1.0.89"
 multihash = "=0.8.0"
 # keep version on the left hand side for release regex
 holochain_persistence_api = { version = "=0.0.6", path = "../holochain_persistence_api" }
-holochain_json_api = "=0.0.15"
+holochain_json_api = "=0.0.17"
 lazy_static = "=1.2.0"
 glob = "=0.3.0"
 uuid = { version = "=0.7.1", features = ["v4"] }
