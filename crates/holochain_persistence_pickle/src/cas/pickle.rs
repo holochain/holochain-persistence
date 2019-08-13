@@ -87,8 +87,7 @@ impl ContentAddressableStorage for PickleStorage {
 impl ReportStorage for PickleStorage {
     fn get_byte_count(&self) -> PersistenceResult<usize> {
         let db = self.db.read()?;
-        Ok(db.iter()
-        .fold(0, |total_bytes, kv| {
+        Ok(db.iter().fold(0, |total_bytes, kv| {
             let value = kv.get_value::<Content>().unwrap();
             total_bytes + value.to_string().bytes().len()
         }))
@@ -99,11 +98,13 @@ impl ReportStorage for PickleStorage {
 mod tests {
     use crate::cas::pickle::PickleStorage;
     use holochain_json_api::json::RawString;
-    use holochain_persistence_api::cas::{
-        content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-        storage::{StorageTestSuite, ContentAddressableStorage},
+    use holochain_persistence_api::{
+        cas::{
+            content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
+            storage::{ContentAddressableStorage, StorageTestSuite},
+        },
+        reporting::ReportStorage,
     };
-    use holochain_persistence_api::reporting::ReportStorage;
     use tempfile::{tempdir, TempDir};
 
     pub fn test_pickle_cas() -> (PickleStorage, TempDir) {
@@ -125,19 +126,15 @@ mod tests {
 
     #[test]
     fn pickle_report_storage_test() {
-        let (mut cas, _)  = test_pickle_cas();
+        let (mut cas, _) = test_pickle_cas();
         // add some content
-        cas.add(&Content::from_json("some bytes")).expect("could not add to CAS");
-        assert_eq!(
-            cas.get_byte_count().unwrap(),
-            10,
-        );
+        cas.add(&Content::from_json("some bytes"))
+            .expect("could not add to CAS");
+        assert_eq!(cas.get_byte_count().unwrap(), 10,);
 
         // add some more
-        cas.add(&Content::from_json("more bytes")).expect("could not add to CAS");
-        assert_eq!(
-            cas.get_byte_count().unwrap(),
-            10+10,
-        );
+        cas.add(&Content::from_json("more bytes"))
+            .expect("could not add to CAS");
+        assert_eq!(cas.get_byte_count().unwrap(), 10 + 10,);
     }
 }
