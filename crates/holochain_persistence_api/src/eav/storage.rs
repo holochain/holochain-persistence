@@ -1,7 +1,7 @@
 use eav::{eavi::EntityAttributeValueIndex, query::EaviQuery, Attribute};
-use reporting::ReportStorage;
 use error::PersistenceResult;
 use objekt;
+use reporting::ReportStorage;
 use std::{
     collections::BTreeSet,
     fmt::Debug,
@@ -11,7 +11,9 @@ use std::{
 /// This provides a simple and flexible interface to define relationships between AddressableContent.
 /// It does NOT provide storage for AddressableContent.
 /// Use cas::storage::ContentAddressableStorage to store AddressableContent.
-pub trait EntityAttributeValueStorage<A: Attribute>: objekt::Clone + Send + Sync + Debug + ReportStorage {
+pub trait EntityAttributeValueStorage<A: Attribute>:
+    objekt::Clone + Send + Sync + Debug + ReportStorage
+{
     /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
     /// append only storage.
     fn add_eavi(

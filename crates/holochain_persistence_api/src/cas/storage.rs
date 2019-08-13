@@ -9,13 +9,13 @@ use crate::{
         Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
         IndexFilter,
     },
-    reporting::ReportStorage,
     error::{PersistenceError, PersistenceResult},
     holochain_json_api::{
         error::JsonError,
         json::{JsonString, RawString},
     },
     regex::Regex,
+    reporting::ReportStorage,
 };
 use objekt;
 use std::{
