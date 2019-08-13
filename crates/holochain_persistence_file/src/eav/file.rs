@@ -10,6 +10,7 @@ use holochain_persistence_api::{
         EntityAttributeValueStorage, Value,
     },
     error::{PersistenceError, PersistenceResult},
+    reporting::ReportStorage,
 };
 use std::{
     collections::BTreeSet,
@@ -242,6 +243,8 @@ where
         }
     }
 }
+
+impl<A: Attribute> ReportStorage for EavFileStorage<A> {}
 
 #[cfg(test)]
 pub mod tests {
