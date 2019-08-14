@@ -1,8 +1,5 @@
 use super::error::{PersistenceError, PersistenceResult};
-use holochain_json_api::{
-    json::JsonString,
-    error::JsonError,
-};
+use holochain_json_api::{error::JsonError, json::JsonString};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DefaultJson)]
 pub struct StorageReport {
