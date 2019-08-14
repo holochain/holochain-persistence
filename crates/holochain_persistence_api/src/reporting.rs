@@ -1,10 +1,23 @@
 use super::error::{PersistenceError, PersistenceResult};
 
+#[derive(Debug, PartialEq)]
+pub struct StorageReport {
+	pub bytes_total: usize,
+}
+
+impl StorageReport {
+	pub fn new(bytes_total: usize) -> Self {
+		Self {
+			bytes_total
+		}
+	}
+}
+
 pub trait ReportStorage {
     /// Return the number of bytes this storage implementation is using on the host system.
     /// The actual implementation is up to the author of the persistence implementation
     /// and may be disk usage or memory usage
-    fn get_byte_count(&self) -> PersistenceResult<usize> {
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
         Err(PersistenceError::ErrorGeneric(
             "Not implemented for this storage type".into(),
         ))

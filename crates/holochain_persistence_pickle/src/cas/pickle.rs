@@ -5,7 +5,7 @@ use holochain_persistence_api::{
         storage::ContentAddressableStorage,
     },
     error::PersistenceResult,
-    reporting::ReportStorage,
+    reporting::{ReportStorage, StorageReport},
 };
 
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
@@ -85,12 +85,13 @@ impl ContentAddressableStorage for PickleStorage {
 }
 
 impl ReportStorage for PickleStorage {
-    fn get_byte_count(&self) -> PersistenceResult<usize> {
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
         let db = self.db.read()?;
-        Ok(db.iter().fold(0, |total_bytes, kv| {
+        let bytes_total = db.iter().fold(0, |total_bytes, kv| {
             let value = kv.get_value::<Content>().unwrap();
             total_bytes + value.to_string().bytes().len()
-        }))
+        });
+        Ok(StorageReport::new(bytes_total))
     }
 }
 
@@ -103,7 +104,7 @@ mod tests {
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
             storage::{ContentAddressableStorage, StorageTestSuite},
         },
-        reporting::ReportStorage,
+        reporting::{ReportStorage, StorageReport},
     };
     use tempfile::{tempdir, TempDir};
 
@@ -130,11 +131,17 @@ mod tests {
         // add some content
         cas.add(&Content::from_json("some bytes"))
             .expect("could not add to CAS");
-        assert_eq!(cas.get_byte_count().unwrap(), 10,);
+        assert_eq!(
+            cas.get_storage_report().unwrap(), 
+            StorageReport::new(10),
+        );
 
         // add some more
         cas.add(&Content::from_json("more bytes"))
             .expect("could not add to CAS");
-        assert_eq!(cas.get_byte_count().unwrap(), 10 + 10,);
+        assert_eq!(
+            cas.get_storage_report().unwrap(),
+            StorageReport::new(10 + 10),
+        );
     }
 }
