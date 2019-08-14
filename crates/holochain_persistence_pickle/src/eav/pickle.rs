@@ -1,7 +1,9 @@
 use holochain_json_api::error::JsonError;
 use holochain_persistence_api::{
+    cas::content::AddressableContent,
     eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
     error::PersistenceResult,
+    reporting::{ReportStorage, StorageReport},
 };
 
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
@@ -97,6 +99,20 @@ where
             .collect::<BTreeSet<EntityAttributeValueIndex<A>>>();
         let entries_iter = entries.iter().cloned();
         Ok(query.run(entries_iter))
+    }
+}
+
+impl<A: Attribute> ReportStorage for EavPickleStorage<A>
+where
+    A: Sync + Send + serde::de::DeserializeOwned,
+{
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
+        let db = self.db.read()?;
+        let total_bytes = db.iter().fold(0, |total_bytes, kv| {
+            let value = kv.get_value::<EntityAttributeValueIndex<A>>().unwrap();
+            total_bytes + value.content().to_string().bytes().len()
+        });
+        Ok(StorageReport::new(total_bytes))
     }
 }
 

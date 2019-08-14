@@ -4,6 +4,7 @@ use holochain_persistence_api::{
         storage::ContentAddressableStorage,
     },
     error::PersistenceResult,
+    reporting::ReportStorage,
 };
 
 use std::{
@@ -59,6 +60,8 @@ impl ContentAddressableStorage for MemoryStorage {
         self.id
     }
 }
+
+impl ReportStorage for MemoryStorage {}
 
 #[cfg(test)]
 pub mod tests {

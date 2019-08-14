@@ -15,6 +15,7 @@ use crate::{
         json::{JsonString, RawString},
     },
     regex::Regex,
+    reporting::ReportStorage,
 };
 use objekt;
 use std::{
@@ -29,7 +30,7 @@ use uuid::Uuid;
 /// implements storage in memory or persistently
 /// anything implementing AddressableContent can be added and fetched by address
 /// CAS is append only
-pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug {
+pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug + ReportStorage {
     /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
     /// true if the Address is in the Store, false otherwise.
@@ -100,6 +101,8 @@ impl ContentAddressableStorage for ExampleContentAddressableStorage {
         Uuid::new_v4()
     }
 }
+
+impl ReportStorage for ExampleContentAddressableStorage {}
 
 #[derive(Debug, Default)]
 /// Not thread-safe CAS implementation with a HashMap

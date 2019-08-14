@@ -5,6 +5,7 @@ use holochain_persistence_api::{
         storage::ContentAddressableStorage,
     },
     error::PersistenceResult,
+    reporting::{ReportStorage, StorageReport},
 };
 
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
@@ -83,13 +84,27 @@ impl ContentAddressableStorage for PickleStorage {
     }
 }
 
+impl ReportStorage for PickleStorage {
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
+        let db = self.db.read()?;
+        let bytes_total = db.iter().fold(0, |total_bytes, kv| {
+            let value = kv.get_value::<Content>().unwrap();
+            total_bytes + value.to_string().bytes().len()
+        });
+        Ok(StorageReport::new(bytes_total))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cas::pickle::PickleStorage;
     use holochain_json_api::json::RawString;
-    use holochain_persistence_api::cas::{
-        content::{ExampleAddressableContent, OtherExampleAddressableContent},
-        storage::StorageTestSuite,
+    use holochain_persistence_api::{
+        cas::{
+            content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
+            storage::{ContentAddressableStorage, StorageTestSuite},
+        },
+        reporting::{ReportStorage, StorageReport},
     };
     use tempfile::{tempdir, TempDir};
 
@@ -107,6 +122,23 @@ mod tests {
         test_suite.round_trip_test::<ExampleAddressableContent, OtherExampleAddressableContent>(
             RawString::from("foo").into(),
             RawString::from("bar").into(),
+        );
+    }
+
+    #[test]
+    fn pickle_report_storage_test() {
+        let (mut cas, _) = test_pickle_cas();
+        // add some content
+        cas.add(&Content::from_json("some bytes"))
+            .expect("could not add to CAS");
+        assert_eq!(cas.get_storage_report().unwrap(), StorageReport::new(10),);
+
+        // add some more
+        cas.add(&Content::from_json("more bytes"))
+            .expect("could not add to CAS");
+        assert_eq!(
+            cas.get_storage_report().unwrap(),
+            StorageReport::new(10 + 10),
         );
     }
 }

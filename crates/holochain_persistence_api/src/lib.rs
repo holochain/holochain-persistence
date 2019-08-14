@@ -24,6 +24,7 @@ pub mod cas;
 pub mod eav;
 pub mod error;
 pub mod hash;
+pub mod reporting;
 
 #[macro_use]
 extern crate objekt;
