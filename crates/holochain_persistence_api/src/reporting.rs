@@ -1,6 +1,10 @@
 use super::error::{PersistenceError, PersistenceResult};
+use holochain_json_api::{
+    json::JsonString,
+    error::JsonError,
+};
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DefaultJson)]
 pub struct StorageReport {
     pub bytes_total: usize,
 }
