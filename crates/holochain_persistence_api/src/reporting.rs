@@ -2,15 +2,13 @@ use super::error::{PersistenceError, PersistenceResult};
 
 #[derive(Debug, PartialEq)]
 pub struct StorageReport {
-	pub bytes_total: usize,
+    pub bytes_total: usize,
 }
 
 impl StorageReport {
-	pub fn new(bytes_total: usize) -> Self {
-		Self {
-			bytes_total
-		}
-	}
+    pub fn new(bytes_total: usize) -> Self {
+        Self { bytes_total }
+    }
 }
 
 pub trait ReportStorage {

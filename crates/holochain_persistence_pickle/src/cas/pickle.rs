@@ -131,10 +131,7 @@ mod tests {
         // add some content
         cas.add(&Content::from_json("some bytes"))
             .expect("could not add to CAS");
-        assert_eq!(
-            cas.get_storage_report().unwrap(), 
-            StorageReport::new(10),
-        );
+        assert_eq!(cas.get_storage_report().unwrap(), StorageReport::new(10),);
 
         // add some more
         cas.add(&Content::from_json("more bytes"))
