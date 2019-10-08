@@ -5,4 +5,5 @@ members = [
   "crates/holochain_persistence_mem",
   "crates/holochain_persistence_file",
   "crates/holochain_persistence_pickle",
+  "crates/holochain_persistence_lmdb",
 ]
