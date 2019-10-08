@@ -28,9 +28,19 @@ impl<A: Attribute> EavLmdbStorage<A> {
         let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
         std::fs::create_dir_all(eav_db_path.clone()).unwrap();
         let env_wrap = unsafe {
-            lmdb::EnvBuilder::new().unwrap().open(
+
+            let mut flags = lmdb::open::Flags::empty();
+            flags.insert(lmdb::open::MAPASYNC); // When using WRITEMAP, use asynchronous flushes to disk.
+            flags.insert(lmdb::open::WRITEMAP); // Use a writeable memory map unless RDONLY is set. 
+            //This is faster and uses fewer mallocs, but loses protection from application bugs like 
+            // wild pointer writes and other bad updates into the database
+            // Combined these flags VERY significantly reduce write times
+
+            let mut env_builder = lmdb::EnvBuilder::new().unwrap();
+            env_builder.set_mapsize(10485760).unwrap();
+            env_builder.open(
                 eav_db_path.to_str().unwrap(),
-                lmdb::open::Flags::empty(),
+                flags,
                 0o600
             ).unwrap()
         };
