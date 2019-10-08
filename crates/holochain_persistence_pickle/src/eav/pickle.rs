@@ -122,11 +122,29 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::EavTestSuite,
+            storage::{EavTestSuite, EavBencher}
         },
-        eav::ExampleAttribute,
+        eav::{ExampleAttribute, Attribute},
     };
     use tempfile::tempdir;
+
+    fn new_store<A: Attribute>() -> EavPickleStorage<A> {
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        EavPickleStorage::new(temp_path)
+    }
+
+    #[bench]
+    fn bench_pickle_add(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_add(b, store);
+    }
+
+    #[bench]
+    fn bench_pickle_fetch(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_fetch(b, store);        
+    }
 
     #[test]
     fn pickle_eav_round_trip() {

@@ -119,14 +119,16 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::EavTestSuite,
+            storage::{EavTestSuite, EavBencher},
         },
-        eav::ExampleAttribute,
+        eav::{
+            Attribute, ExampleAttribute,
+        },
     };
     use tempfile::tempdir;
 
     #[test]
-    fn pickle_eav_round_trip() {
+    fn lmdb_eav_round_trip() {
         let temp = tempdir().expect("test was supposed to create temp dir");
 
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
@@ -144,8 +146,26 @@ pub mod tests {
         )
     }
 
+    fn new_store<A: Attribute>() -> EavLmdbStorage<A> {
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        EavLmdbStorage::new(temp_path)
+    }
+
+    #[bench]
+    fn bench_lmdb_add(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_add(b, store);
+    }
+
+    #[bench]
+    fn bench_lmdb_fetch(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_fetch(b, store);        
+    }
+
     #[test]
-    fn pickle_eav_one_to_many() {
+    fn lmdb_eav_one_to_many() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let eav_storage = EavLmdbStorage::new(temp_path);
@@ -157,7 +177,7 @@ pub mod tests {
     }
 
     #[test]
-    fn pickle_eav_many_to_one() {
+    fn lmdb_eav_many_to_one() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let eav_storage = EavLmdbStorage::new(temp_path);
@@ -169,7 +189,7 @@ pub mod tests {
     }
 
     #[test]
-    fn pickle_eav_range() {
+    fn lmdb_eav_range() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let eav_storage = EavLmdbStorage::new(temp_path);
@@ -181,7 +201,7 @@ pub mod tests {
     }
 
     #[test]
-    fn pickle_eav_prefixes() {
+    fn lmdb_eav_prefixes() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let eav_storage = EavLmdbStorage::new(temp_path);
@@ -199,7 +219,7 @@ pub mod tests {
     }
 
     #[test]
-    fn pickle_tombstone() {
+    fn lmdb_tombstone() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let eav_storage = EavLmdbStorage::new(temp_path);

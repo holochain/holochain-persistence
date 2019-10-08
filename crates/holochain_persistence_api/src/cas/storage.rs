@@ -4,10 +4,10 @@
 //! A test suite for CAS is also implemented here.
 
 use crate::{
-    cas::content::{Address, AddressableContent, Content},
+    cas::content::{Address, AddressableContent, Content, ExampleAddressableContent},
     eav::{
         Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
-        IndexFilter,
+        IndexFilter, ExampleAttribute,
     },
     error::{PersistenceError, PersistenceResult},
     holochain_json_api::{
@@ -808,6 +808,50 @@ impl EavTestSuite {
                 ))
                 .unwrap()
         );
+    }
+}
+
+pub struct EavBencher;
+
+impl EavBencher {
+
+    fn random_addressable_content() -> ExampleAddressableContent {
+        let s: String = (0..4).map(|_| rand::random::<char>()).collect();
+        ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
+    }
+
+    pub fn bench_add(
+        b: &mut test::Bencher,
+        mut store: impl EntityAttributeValueStorage<ExampleAttribute> + Clone,
+    ) {
+        b.iter(|| {
+            let eav = EntityAttributeValueIndex::new(
+                &Self::random_addressable_content().address(),
+                &ExampleAttribute::WithPayload("favourite-color".to_string()),
+                &Self::random_addressable_content().address(),
+            )
+            .expect("Could create entityAttributeValue");
+            store.add_eavi(&eav)     
+        })
+    }
+
+    pub fn bench_fetch(
+        b: &mut test::Bencher,
+        mut store: impl EntityAttributeValueStorage<ExampleAttribute> + Clone,       
+    ) {
+        // add some values to make it realistic
+        for _ in 0..10 {
+            let eav = EntityAttributeValueIndex::new(
+                &Self::random_addressable_content().address(),
+                &ExampleAttribute::WithPayload("favourite-color".to_string()),
+                &Self::random_addressable_content().address(),
+            ).expect("Could create entityAttributeValue");
+            store.add_eavi(&eav).unwrap();
+        }
+
+        b.iter(|| {
+            store.fetch_eavi(&EaviQuery::default())     
+        })        
     }
 }
 

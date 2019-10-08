@@ -4,6 +4,8 @@
 #![feature(try_trait)]
 #![feature(never_type)]
 #![warn(unused_extern_crates)]
+#![feature(test)]
+extern crate test;  
 #[macro_use]
 extern crate lazy_static;
 
