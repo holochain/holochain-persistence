@@ -1,25 +1,27 @@
 use holochain_persistence_api::{
     eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
+    cas::content::Address,
     error::PersistenceResult,
     reporting::{ReportStorage, StorageReport},
         cas::content::AddressableContent,
 
 };
-use lmdb_zero as lmdb;
+use kv::{Config, Manager, Store};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
     marker::{PhantomData, Send, Sync},
     path::Path,
-    sync::{Arc},
+    sync::{Arc, RwLock},
 };
 use uuid::Uuid;
+
+const EAV_BUCKET: &str = "EAV";
 
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
     id: Uuid,
-    db: Arc<lmdb::Database<'static>>,
-    env: Arc<lmdb::Environment>,
+    store: Arc<RwLock<Store>>,
     attribute: PhantomData<A>,
 }
 
@@ -27,35 +29,24 @@ impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
         let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
         std::fs::create_dir_all(eav_db_path.clone()).unwrap();
-        let env_wrap = unsafe {
 
-            let mut flags = lmdb::open::Flags::empty();
-            flags.insert(lmdb::open::MAPASYNC); // When using WRITEMAP, use asynchronous flushes to disk.
-            flags.insert(lmdb::open::WRITEMAP); // Use a writeable memory map unless RDONLY is set. 
-            //This is faster and uses fewer mallocs, but loses protection from application bugs like 
-            // wild pointer writes and other bad updates into the database
-            // Combined these flags VERY significantly reduce write times
+        // create a manager
+        let mut mgr = Manager::new();
 
-            let mut env_builder = lmdb::EnvBuilder::new().unwrap();
-            env_builder.set_mapsize(10485760).unwrap();
-            env_builder.open(
-                eav_db_path.to_str().unwrap(),
-                flags,
-                0o600
-            ).unwrap()
-        };
-        let env = Arc::new(env_wrap);
+        // Next configure a database
+        let mut cfg = Config::default(eav_db_path);
+        // These flags makes write much much faster (https://docs.rs/lmdb-rkv/0.11.4/lmdb/struct.EnvironmentFlags.html)
+        // at the expense of some safety during application crashes
+        cfg.flag(lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
 
-        let db = lmdb::Database::open(
-            env.clone(),
-            None,
-            &lmdb::DatabaseOptions::defaults()
-        ).unwrap();
+        // Add a bucket named `cas`
+        cfg.bucket(EAV_BUCKET, None);
+
+        let handle = mgr.open(cfg).expect("Could not get a handle to the EAV database");
 
         EavLmdbStorage {
             id: Uuid::new_v4(),
-            db: Arc::new(db),
-            env,
+            store: handle,
             attribute: PhantomData,
         }
     }
@@ -77,17 +68,19 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-        let txn = lmdb::WriteTransaction::new(self.env.clone()).unwrap();
-        {
-            let mut access = txn.access();
-            access.put(
-                &self.db,
-                eav.index().to_string().as_bytes(),
-                eav.content().to_string().as_bytes(),
-                lmdb::put::Flags::empty()
-            ).unwrap();
-        }
+
+        let store = self.store.read()?;
+        let bucket = store.bucket::<String, String>(Some(EAV_BUCKET)).unwrap();
+        let mut txn = store.write_txn().unwrap();
+
+        txn.set(
+            &bucket,
+            eav.index().to_string(),
+            eav.content().to_string(),
+        ).unwrap();
+
         txn.commit().unwrap();
+
         Ok(Some(eav.clone()))
     }
 
@@ -97,16 +90,17 @@ where
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
         let mut result = BTreeSet::new();
         
-        let txn = lmdb::ReadTransaction::new(self.env.clone()).unwrap();
-        let access = txn.access();
-        let mut cursor = txn.cursor(self.db.clone()).unwrap();
+        let store = self.store.read()?;
+        let bucket = store.bucket::<Address, String>(Some(EAV_BUCKET)).unwrap();
+        let txn = store.read_txn().unwrap();
 
         // literally iterate the entire database
-        let mut maybe_kv = cursor.first::<str,str>(&access);
+        let cursor = txn.read_cursor(&bucket).unwrap();
+        let mut maybe_kv = cursor.get(None, kv::CursorOp::First);
         while let Ok((_key, value)) = maybe_kv {
-            let record = serde_json::from_str(value)?;
+            let record = serde_json::from_str(&value)?;
             result.insert(record);
-            maybe_kv = cursor.next(&access);
+            maybe_kv = cursor.get(None, kv::CursorOp::Next);
         }        
 
         Ok(query.run(result.iter().cloned()))

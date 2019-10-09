@@ -78,7 +78,7 @@ impl LmdbStorage {
 
     fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, KvError> {
         let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
+        let bucket = store.bucket::<Address, String>(Some(CAS_BUCKET)).unwrap();
         let txn = store.read_txn().unwrap();
 
         match txn.get(&bucket, address.clone()) {
