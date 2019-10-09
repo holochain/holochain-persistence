@@ -17,6 +17,8 @@ use std::{
 };
 use uuid::Uuid;
 
+const CAS_BUCKET: &str = "cas";
+
 #[derive(Clone)]
 pub struct LmdbStorage {
     id: Uuid,
@@ -34,17 +36,21 @@ impl Debug for LmdbStorage {
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> LmdbStorage {
         let cas_db_path = db_path.as_ref().join("cas").with_extension("db");
-        std::fs::create_dir_all(cas_db_path.clone()).unwrap();
+        std::fs::create_dir_all(cas_db_path.clone()).expect("Could not create file path for CAS store");
         
+        // create a manager
         let mut mgr = Manager::new();
 
         // Next configure a database
         let mut cfg = Config::default(cas_db_path);
+        // These flags makes write much much faster (https://docs.rs/lmdb-rkv/0.11.4/lmdb/struct.EnvironmentFlags.html)
+        // at the expense of some safety during application crashes
+        cfg.flag(lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
 
         // Add a bucket named `cas`
-        cfg.bucket("cas", None);
+        cfg.bucket(CAS_BUCKET, None);
 
-        let handle = mgr.open(cfg).unwrap();
+        let handle = mgr.open(cfg).expect("Could not get a handle to the CAS database");
 
         LmdbStorage {
             id: Uuid::new_v4(),
@@ -53,24 +59,43 @@ impl LmdbStorage {
     }
 }
 
-impl ContentAddressableStorage for LmdbStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {        
+impl LmdbStorage {
+    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), KvError> {        
         let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
-        let mut txn = store.write_txn().unwrap();
+        let bucket = store.bucket::<Address, String>(Some(CAS_BUCKET))?;
+        let mut txn = store.write_txn()?;
 
         txn.set(
             &bucket,
             content.address(),
             content.content().to_string(),
-        ).unwrap();
+        )?;
 
-        txn.commit().unwrap();
+        txn.commit()?;
 
         Ok(())
     }
 
-    // TODO: optimize this to not do a full read
+    fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, KvError> {
+        let store = self.store.read()?;
+        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
+        let txn = store.read_txn().unwrap();
+
+        match txn.get(&bucket, address.clone()) {
+            Ok(result) => Ok(Some(JsonString::from_json(&result))),
+            Err(KvError::NotFound) => Ok(None),
+            Err(e) => Err(e)
+        }
+    }
+}
+
+impl ContentAddressableStorage for LmdbStorage {
+
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {        
+        self.lmdb_add(content)
+            .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
+    }
+
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         self.fetch(address).map(|result| {
             match result {
@@ -81,15 +106,8 @@ impl ContentAddressableStorage for LmdbStorage {
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
-        let txn = store.read_txn().unwrap();
-
-        match txn.get(&bucket, address.clone()) {
-            Ok(result) => Ok(Some(JsonString::from_json(&result))),
-            Err(KvError::NotFound) => Ok(None),
-            Err(e) => Err(PersistenceError::new(&format!("{:?}", e)))
-        }
+        self.lmdb_fetch(address)
+            .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
     }
 
     fn get_id(&self) -> Uuid {
@@ -105,12 +123,12 @@ impl ReportStorage for LmdbStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::cas::lmdb::LmdbStorage;
+use crate::cas::lmdb::LmdbStorage;
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{ContentAddressableStorage, StorageTestSuite},
+            storage::{ContentAddressableStorage, StorageTestSuite, CasBencher},
         },
         reporting::{ReportStorage, StorageReport},
     };
@@ -119,6 +137,18 @@ mod tests {
     pub fn test_lmdb_cas() -> (LmdbStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
         (LmdbStorage::new(dir.path()), dir)
+    }
+
+    #[bench]
+    fn bench_lmdb_cas_add(b: &mut test::Bencher) {
+        let (store, _) = test_lmdb_cas();
+        CasBencher::bench_add(b, store);
+    }
+
+    #[bench]
+    fn bench_lmdb_cas_fetch(b: &mut test::Bencher) {
+        let (store, _) = test_lmdb_cas();
+        CasBencher::bench_fetch(b, store);        
     }
 
     #[test]

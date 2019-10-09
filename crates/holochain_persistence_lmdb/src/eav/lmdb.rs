@@ -129,10 +129,10 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{EavTestSuite, EavBencher},
+            storage::{EavTestSuite},
         },
         eav::{
-            Attribute, ExampleAttribute,
+            Attribute, ExampleAttribute, storage::EavBencher,
         },
     };
     use tempfile::tempdir;
