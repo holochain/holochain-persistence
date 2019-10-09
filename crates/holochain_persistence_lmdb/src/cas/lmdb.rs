@@ -7,20 +7,20 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
 };
 use holochain_json_api::json::JsonString;
-use lmdb_zero as lmdb;
-use lmdb_zero::error::Error as LmdbError;
+// use lmdb_zero as lmdb;
+// use lmdb_zero::error::Error as LmdbError;
+use kv::{Config, Manager, Store, Error as KvError};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
-    sync::{Arc},
+    sync::{Arc, RwLock},
 };
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct LmdbStorage {
     id: Uuid,
-    db: Arc<lmdb::Database<'static>>,
-    env: Arc<lmdb::Environment>,
+    store: Arc<RwLock<Store>>,
 }
 
 impl Debug for LmdbStorage {
@@ -35,45 +35,36 @@ impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> LmdbStorage {
         let cas_db_path = db_path.as_ref().join("cas").with_extension("db");
         std::fs::create_dir_all(cas_db_path.clone()).unwrap();
-        let env_wrap = unsafe {
-            lmdb::EnvBuilder::new().unwrap().open(
-                cas_db_path.to_str().unwrap(),
-                lmdb::open::Flags::empty(),
-                0o600
-            ).unwrap()
-        };
-        let env = Arc::new(env_wrap);
+        
+        let mut mgr = Manager::new();
 
-        let db = lmdb::Database::open(
-            env.clone(),
-            None,
-            &lmdb::DatabaseOptions::defaults()
-        ).unwrap();
+        // Next configure a database
+        let mut cfg = Config::default(cas_db_path);
+
+        // Add a bucket named `cas`
+        cfg.bucket("cas", None);
+
+        let handle = mgr.open(cfg).unwrap();
 
         LmdbStorage {
             id: Uuid::new_v4(),
-            db: Arc::new(db),
-            env,
+            store: handle,
         }
     }
 }
 
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {        
-        let txn = lmdb::WriteTransaction::new(self.env.clone()).unwrap();
-        // An accessor is used to control memory access.
-        // NB You can only have one live accessor from a particular transaction
-        // at a time. Violating this results in a panic at runtime.
-        {
-            let mut access = txn.access();
-            access.put(
-                &self.db,
-                content.address().to_string().as_bytes(), // TODO: Actually handle this conversion properly
-                content.content().to_string().as_bytes(),
-                lmdb::put::Flags::empty()
-            ).unwrap();
-        }
-        // Commit the changes so they are visible to later transactions
+        let store = self.store.read()?;
+        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
+        let mut txn = store.write_txn().unwrap();
+
+        txn.set(
+            &bucket,
+            content.address(),
+            content.content().to_string(),
+        ).unwrap();
+
         txn.commit().unwrap();
 
         Ok(())
@@ -81,23 +72,22 @@ impl ContentAddressableStorage for LmdbStorage {
 
     // TODO: optimize this to not do a full read
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        let txn = lmdb::ReadTransaction::new(self.env.clone()).unwrap();
-        let access = txn.access();
-        let get_result = access.get::<_, str>(&self.db, address.to_string().as_bytes());
-        match get_result {
-            Ok(_) => Ok(true),
-            Err(LmdbError::Code(-30798)) => Ok(false), // This is the code for `value not found`
-            Err(e) => Err(PersistenceError::new(&format!("{:?}", e)))
-        }
+        self.fetch(address).map(|result| {
+            match result {
+                Some(_) => true,
+                None => false,
+            }
+        })
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let txn = lmdb::ReadTransaction::new(self.env.clone()).unwrap();
-        let access = txn.access();
-        let get_result = access.get::<_, str>(&self.db, address.to_string().as_bytes());
-        match get_result {
-            Ok(result) => Ok(Some(JsonString::from_json(result))),
-            Err(LmdbError::Code(-30798)) => Ok(None), // This is the code for `value not found`
+        let store = self.store.read()?;
+        let bucket = store.bucket::<Address, String>(Some("cas")).unwrap();
+        let txn = store.read_txn().unwrap();
+
+        match txn.get(&bucket, address.clone()) {
+            Ok(result) => Ok(Some(JsonString::from_json(&result))),
+            Err(KvError::NotFound) => Ok(None),
             Err(e) => Err(PersistenceError::new(&format!("{:?}", e)))
         }
     }
