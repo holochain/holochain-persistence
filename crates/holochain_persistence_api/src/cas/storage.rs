@@ -7,7 +7,7 @@ use crate::{
     cas::content::{Address, AddressableContent, Content, ExampleAddressableContent},
     eav::{
         Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
-        IndexFilter, ExampleAttribute,
+        IndexFilter,
     },
     error::{PersistenceError, PersistenceResult},
     holochain_json_api::{
@@ -811,9 +811,9 @@ impl EavTestSuite {
     }
 }
 
-pub struct EavBencher;
+pub struct CasBencher;
 
-impl EavBencher {
+impl CasBencher {
 
     fn random_addressable_content() -> ExampleAddressableContent {
         let s: String = (0..4).map(|_| rand::random::<char>()).collect();
@@ -822,35 +822,24 @@ impl EavBencher {
 
     pub fn bench_add(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute> + Clone,
+        mut store: impl ContentAddressableStorage,
     ) {
         b.iter(|| {
-            let eav = EntityAttributeValueIndex::new(
-                &Self::random_addressable_content().address(),
-                &ExampleAttribute::WithPayload("favourite-color".to_string()),
-                &Self::random_addressable_content().address(),
-            )
-            .expect("Could create entityAttributeValue");
-            store.add_eavi(&eav)     
+            store.add(&CasBencher::random_addressable_content())     
         })
     }
 
     pub fn bench_fetch(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute> + Clone,       
+        mut store: impl ContentAddressableStorage,       
     ) {
         // add some values to make it realistic
         for _ in 0..10 {
-            let eav = EntityAttributeValueIndex::new(
-                &Self::random_addressable_content().address(),
-                &ExampleAttribute::WithPayload("favourite-color".to_string()),
-                &Self::random_addressable_content().address(),
-            ).expect("Could create entityAttributeValue");
-            store.add_eavi(&eav).unwrap();
+            store.add(&CasBencher::random_addressable_content()).unwrap();
         }
 
         b.iter(|| {
-            store.fetch_eavi(&EaviQuery::default())     
+            store.fetch(&Address::from("Qm..."))     
         })        
     }
 }

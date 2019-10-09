@@ -122,9 +122,9 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{EavTestSuite, EavBencher}
+            storage::{EavTestSuite}
         },
-        eav::{ExampleAttribute, Attribute},
+        eav::{ExampleAttribute, Attribute, EavBencher},
     };
     use tempfile::tempdir;
 
@@ -135,13 +135,13 @@ pub mod tests {
     }
 
     #[bench]
-    fn bench_pickle_add(b: &mut test::Bencher) {
+    fn bench_pickle_eav_add(b: &mut test::Bencher) {
         let store = new_store();
         EavBencher::bench_add(b, store);
     }
 
     #[bench]
-    fn bench_pickle_fetch(b: &mut test::Bencher) {
+    fn bench_pickle_eav_fetch(b: &mut test::Bencher) {
         let store = new_store();
         EavBencher::bench_fetch(b, store);        
     }

@@ -1,12 +1,12 @@
 use holochain_persistence_api::{
     eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
     cas::content::Address,
-    error::PersistenceResult,
+    error::{PersistenceResult, PersistenceError},
     reporting::{ReportStorage, StorageReport},
         cas::content::AddressableContent,
 
 };
-use kv::{Config, Manager, Store};
+use kv::{Config, Manager, Store, Error as KvError};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -28,7 +28,7 @@ pub struct EavLmdbStorage<A: Attribute> {
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
         let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
-        std::fs::create_dir_all(eav_db_path.clone()).unwrap();
+        std::fs::create_dir_all(eav_db_path.clone()).expect("Could not create file path for EAV database");
 
         // create a manager
         let mut mgr = Manager::new();
@@ -60,6 +60,52 @@ impl<A: Attribute> Debug for EavLmdbStorage<A> {
     }
 }
 
+impl<A: Attribute> EavLmdbStorage<A> 
+where
+    A: Sync + Send + serde::de::DeserializeOwned
+{
+    fn add_lmdb_eavi(
+        &mut self,
+        eav: &EntityAttributeValueIndex<A>,
+    ) -> Result<Option<EntityAttributeValueIndex<A>>, KvError> {
+        let store = self.store.read()?;
+        let bucket = store.bucket::<String, String>(Some(EAV_BUCKET))?;
+        let mut txn = store.write_txn()?;
+
+        txn.set(
+            &bucket,
+            eav.index().to_string(),
+            eav.content().to_string(),
+        )?;
+
+        txn.commit()?;
+
+        Ok(Some(eav.clone()))
+    }
+
+    fn fetch_lmdb_eavi(
+        &self,
+        query: &EaviQuery<A>,
+    ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, KvError> {
+        let mut result = BTreeSet::new();
+        
+        let store = self.store.read()?;
+        let bucket = store.bucket::<Address, String>(Some(EAV_BUCKET))?;
+        let txn = store.read_txn()?;
+
+        // literally iterate the entire database
+        let cursor = txn.read_cursor(&bucket).unwrap();
+        let mut maybe_kv = cursor.get(None, kv::CursorOp::First);
+        while let Ok((_key, value)) = maybe_kv {
+            let record = serde_json::from_str(&value).expect("Invalid EAV record loaded"); // TODO: handle this better
+            result.insert(record);
+            maybe_kv = cursor.get(None, kv::CursorOp::Next);
+        }        
+
+        Ok(query.run(result.iter().cloned()))
+    }
+}
+
 impl<A: Attribute> EntityAttributeValueStorage<A> for EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
@@ -68,42 +114,16 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-
-        let store = self.store.read()?;
-        let bucket = store.bucket::<String, String>(Some(EAV_BUCKET)).unwrap();
-        let mut txn = store.write_txn().unwrap();
-
-        txn.set(
-            &bucket,
-            eav.index().to_string(),
-            eav.content().to_string(),
-        ).unwrap();
-
-        txn.commit().unwrap();
-
-        Ok(Some(eav.clone()))
+        self.add_lmdb_eavi(eav).
+            map_err(|e| PersistenceError::from(format!("EAV add error: {}", e)))
     }
 
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
-        let mut result = BTreeSet::new();
-        
-        let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some(EAV_BUCKET)).unwrap();
-        let txn = store.read_txn().unwrap();
-
-        // literally iterate the entire database
-        let cursor = txn.read_cursor(&bucket).unwrap();
-        let mut maybe_kv = cursor.get(None, kv::CursorOp::First);
-        while let Ok((_key, value)) = maybe_kv {
-            let record = serde_json::from_str(&value)?;
-            result.insert(record);
-            maybe_kv = cursor.get(None, kv::CursorOp::Next);
-        }        
-
-        Ok(query.run(result.iter().cloned()))
+        self.fetch_lmdb_eavi(query).
+            map_err(|e| PersistenceError::from(format!("EAV fetch error: {}", e)))
     }
 }
 
