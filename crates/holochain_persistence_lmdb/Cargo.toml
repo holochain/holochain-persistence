@@ -28,6 +28,8 @@ bencher = "=0.1.5"
 rand = "0.7.2"
 kv = "0.9.2"
 lmdb-rkv = "0.11.4"
+bitflags = "1.2.0"
+rkv = "0.10.2"
 
 [dev-dependencies]
 tempfile = "=3.0.7"

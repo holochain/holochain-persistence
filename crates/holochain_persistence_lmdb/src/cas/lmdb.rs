@@ -9,7 +9,8 @@ use holochain_persistence_api::{
 use holochain_json_api::json::JsonString;
 // use lmdb_zero as lmdb;
 // use lmdb_zero::error::Error as LmdbError;
-use kv::{Config, Manager, Store, Error as KvError};
+// use kv::{Config, Manager, Store, Error as KvError};
+use rkv::{Manager, Rkv, SingleStore, Value, StoreOptions, DatabaseFlags, EnvironmentFlags, error::{StoreError, DataError}};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -18,11 +19,13 @@ use std::{
 use uuid::Uuid;
 
 const CAS_BUCKET: &str = "cas";
+const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be
 
 #[derive(Clone)]
 pub struct LmdbStorage {
     id: Uuid,
-    store: Arc<RwLock<Store>>,
+    store: SingleStore,
+    manager: Arc<RwLock<Rkv>>,
 }
 
 impl Debug for LmdbStorage {
@@ -38,54 +41,80 @@ impl LmdbStorage {
         let cas_db_path = db_path.as_ref().join("cas").with_extension("db");
         std::fs::create_dir_all(cas_db_path.clone()).expect("Could not create file path for CAS store");
         
-        // create a manager
-        let mut mgr = Manager::new();
+        let manager = Manager::singleton().write().unwrap().get_or_create(cas_db_path.as_path(), |path: &Path| {
+            let mut env_builder = Rkv::environment_builder();
+            env_builder
+                // max size of memory map, can be changed later 
+                .set_map_size(MAX_SIZE_BYTES)
+                // max number of DBs in this environment
+                .set_max_dbs(1) 
+                // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                // There is some loss of data integrity guarantees that comes with this
+                .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
+            Rkv::from_env(path, env_builder)
+        }).unwrap();
 
-        // Next configure a database
-        let mut cfg = Config::default(cas_db_path);
-        // These flags makes write much much faster (https://docs.rs/lmdb-rkv/0.11.4/lmdb/struct.EnvironmentFlags.html)
-        // at the expense of some safety during application crashes
-        cfg.flag(lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
+        let env = manager.read().unwrap();
 
-        // Add a bucket named `cas`
-        cfg.bucket(CAS_BUCKET, None);
-
-        let handle = mgr.open(cfg).expect("Could not get a handle to the CAS database");
+        // Then you can use the environment handle to get a handle to a datastore:
+        let options = StoreOptions{create: true, flags: DatabaseFlags::empty()};
+        let store: SingleStore = env.open_single(CAS_BUCKET, options).unwrap();
 
         LmdbStorage {
             id: Uuid::new_v4(),
-            store: handle,
+            store: store,
+            manager: manager.clone(),
         }
     }
 }
 
 impl LmdbStorage {
-    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), KvError> {        
-        let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some(CAS_BUCKET))?;
-        let mut txn = store.write_txn()?;
+    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), Error> {     
+        let env = self.manager.read().unwrap();
+        let mut writer = env.write().unwrap();
 
-        txn.set(
-            &bucket,
+        self.store.put(
+            &mut writer,
             content.address(),
-            content.content().to_string(),
-        )?;
+            &Value::Str(&content.content().to_string()),
+        ).unwrap();
 
-        txn.commit()?;
+        writer.commit().unwrap();
 
         Ok(())
     }
 
-    fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, KvError> {
-        let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some(CAS_BUCKET)).unwrap();
-        let txn = store.read_txn().unwrap();
+    fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
+        let env = self.manager.read().unwrap();
+        let reader = env.read().unwrap();
 
-        match txn.get(&bucket, address.clone()) {
-            Ok(result) => Ok(Some(JsonString::from_json(&result))),
-            Err(KvError::NotFound) => Ok(None),
-            Err(e) => Err(e)
+        match self.store.get(&reader, address.clone()) {
+            Ok(Some(value)) => {
+                match value {
+                    Value::Str(s) => Ok(Some(JsonString::from_json(s))),
+                    _ => Err(StoreError::DataError(DataError::Empty))
+                }
+            },
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
+
+
+
+        // self.store.get(&reader, address.clone()).map(|maybe_v| {
+        //     maybe_v.map(|v| {
+        //         match v {
+        //             Value::Str(s) => JsonString::from_json(s),
+        //             _ => return Err(StoreError::DataError(DataError::Empty))
+        //         }
+        //     })
+        // })
+
+        // match self.store.get(&reader, address.clone()) {
+        //     Ok(result) => Ok(Some(JsonString::from_json(&result))),
+        //     Err(KvError::NotFound) => Ok(None),
+        //     Err(e) => Err(e)
+        // }
     }
 }
 

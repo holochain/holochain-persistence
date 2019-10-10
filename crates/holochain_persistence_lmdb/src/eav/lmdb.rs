@@ -17,6 +17,8 @@ use std::{
 use uuid::Uuid;
 
 const EAV_BUCKET: &str = "EAV";
+const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be
+
 
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
@@ -37,9 +39,14 @@ impl<A: Attribute> EavLmdbStorage<A> {
         let mut cfg = Config::default(eav_db_path);
         // These flags makes write much much faster (https://docs.rs/lmdb-rkv/0.11.4/lmdb/struct.EnvironmentFlags.html)
         // at the expense of some safety during application crashes
-        cfg.flag(lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
+        // The last flag allows for storing multiple items with the same key which permits optimization of 
+        // queries of attribute/value pairs of a single entity. This is probably the most common query so this makes sense
+        cfg.flag(
+            lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
+        cfg.set_map_size(MAX_SIZE_BYTES);
 
         // Add a bucket named `cas`
+
         cfg.bucket(EAV_BUCKET, None);
 
         let handle = mgr.open(cfg).expect("Could not get a handle to the EAV database");
