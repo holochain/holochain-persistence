@@ -1,4 +1,4 @@
-# holochain_persistence_pickle
+# holochain_persistence_lmdb
 
 [![Project](https://img.shields.io/badge/project-holochain-blue.svg?style=flat-square)](http://holochain.org/)
 [![Chat](https://img.shields.io/badge/chat-chat%2eholochain%2enet-blue.svg?style=flat-square)](https://chat.holochain.net)
@@ -9,18 +9,18 @@
 
 ## Overview
 
-[pickledb](https://github.com/seladb/pickledb-rs) persistence implementation for holochain. Provides content addressable storage (CAS) and entity attribute value (index) using pickledb's key/value store.
+[LMDB](http://www.lmdb.tech/doc/index.html) persistence implementation for holochain. Provides content addressable storage (CAS) and entity attribute value (index) using LMDBs's key/value store.
 
 ## Usage
-Add `holochain_persistence_pickle` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
+Add `holochain_persistence_lmdb` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
 
 ```rust
-use holochain_persistence_file::cas::pickle::PickleStorage;
+use holochain_persistence_lmdb::cas::LmdbStorate;
 use tempfile::tempdir;
 
-pub fn init() -> PickleStorage {
+pub fn init() -> LmdbStorate {
   let dir = tempdir().expect("Could not create a tempdir for CAS.");
-  let store = PickleStorage::new(dir.path()).unwrap();
+  let store = LmdbStorate::new(dir.path()).unwrap();
   store.add(<some_content>).expect("added some content");
   store
 }
