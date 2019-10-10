@@ -1,12 +1,12 @@
 use holochain_persistence_api::{
     eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
-    cas::content::Address,
     error::{PersistenceResult, PersistenceError},
     reporting::{ReportStorage, StorageReport},
         cas::content::AddressableContent,
 
 };
-use kv::{Config, Manager, Store, Error as KvError};
+// use kv::{Config, Manager, Store, Error as KvError};
+use rkv::{Manager, Rkv, SingleStore, Value, StoreOptions, DatabaseFlags, EnvironmentFlags, error::{StoreError}};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -23,37 +23,39 @@ const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
     id: Uuid,
-    store: Arc<RwLock<Store>>,
+    store: SingleStore,
+    manager: Arc<RwLock<Rkv>>,
     attribute: PhantomData<A>,
 }
 
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
-        let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
-        std::fs::create_dir_all(eav_db_path.clone()).expect("Could not create file path for EAV database");
+        let cas_db_path = db_path.as_ref().join("eav").with_extension("db");
+        std::fs::create_dir_all(cas_db_path.clone()).expect("Could not create file path for CAS store");
+        
+        let manager = Manager::singleton().write().unwrap().get_or_create(cas_db_path.as_path(), |path: &Path| {
+            let mut env_builder = Rkv::environment_builder();
+            env_builder
+                // max size of memory map, can be changed later 
+                .set_map_size(MAX_SIZE_BYTES)
+                // max number of DBs in this environment
+                .set_max_dbs(1) 
+                // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                // There is some loss of data integrity guarantees that comes with this
+                .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
+            Rkv::from_env(path, env_builder)
+        }).expect("Could not create the environment");
 
-        // create a manager
-        let mut mgr = Manager::new();
+        let env = manager.read().expect("Could not get a read lock on the manager");
 
-        // Next configure a database
-        let mut cfg = Config::default(eav_db_path);
-        // These flags makes write much much faster (https://docs.rs/lmdb-rkv/0.11.4/lmdb/struct.EnvironmentFlags.html)
-        // at the expense of some safety during application crashes
-        // The last flag allows for storing multiple items with the same key which permits optimization of 
-        // queries of attribute/value pairs of a single entity. This is probably the most common query so this makes sense
-        cfg.flag(
-            lmdb::EnvironmentFlags::WRITE_MAP | lmdb::EnvironmentFlags::MAP_ASYNC);
-        cfg.set_map_size(MAX_SIZE_BYTES);
-
-        // Add a bucket named `cas`
-
-        cfg.bucket(EAV_BUCKET, None);
-
-        let handle = mgr.open(cfg).expect("Could not get a handle to the EAV database");
+        // Then you can use the environment handle to get a handle to a datastore:
+        let options = StoreOptions{create: true, flags: DatabaseFlags::empty()};
+        let store: SingleStore = env.open_single(EAV_BUCKET, options).expect("Could not create EAV store");
 
         EavLmdbStorage {
             id: Uuid::new_v4(),
-            store: handle,
+            store: store,
+            manager: manager.clone(),
             attribute: PhantomData,
         }
     }
@@ -74,18 +76,18 @@ where
     fn add_lmdb_eavi(
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
-    ) -> Result<Option<EntityAttributeValueIndex<A>>, KvError> {
-        let store = self.store.read()?;
-        let bucket = store.bucket::<String, String>(Some(EAV_BUCKET))?;
-        let mut txn = store.write_txn()?;
+    ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
 
-        txn.set(
-            &bucket,
+        let env = self.manager.read().unwrap();
+        let mut writer = env.write()?;
+
+        self.store.put(
+            &mut writer,
             eav.index().to_string(),
-            eav.content().to_string(),
+            &Value::Str(&eav.content().to_string()),
         )?;
 
-        txn.commit()?;
+        writer.commit()?;
 
         Ok(Some(eav.clone()))
     }
@@ -93,23 +95,23 @@ where
     fn fetch_lmdb_eavi(
         &self,
         query: &EaviQuery<A>,
-    ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, KvError> {
-        let mut result = BTreeSet::new();
+    ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
         
-        let store = self.store.read()?;
-        let bucket = store.bucket::<Address, String>(Some(EAV_BUCKET))?;
-        let txn = store.read_txn()?;
+        let env = self.manager.read().unwrap();
+        let reader = env.read()?;
 
-        // literally iterate the entire database
-        let cursor = txn.read_cursor(&bucket).unwrap();
-        let mut maybe_kv = cursor.get(None, kv::CursorOp::First);
-        while let Ok((_key, value)) = maybe_kv {
-            let record = serde_json::from_str(&value).expect("Invalid EAV record loaded"); // TODO: handle this better
-            result.insert(record);
-            maybe_kv = cursor.get(None, kv::CursorOp::Next);
-        }        
-
-        Ok(query.run(result.iter().cloned()))
+        let entries = self.store
+            .iter_start(&reader)?
+            .filter_map(Result::ok)
+            .filter_map(|(_k, v)| {
+                match v {
+                    Some(Value::Str(s)) => serde_json::from_str(&s).ok(),
+                    _ => None,
+                }
+            })
+            .collect::<BTreeSet<EntityAttributeValueIndex<A>>>();
+        let entries_iter = entries.iter().cloned();
+        Ok(query.run(entries_iter))
     }
 }
 

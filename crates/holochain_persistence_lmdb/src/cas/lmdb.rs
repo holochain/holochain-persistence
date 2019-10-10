@@ -7,9 +7,6 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
 };
 use holochain_json_api::json::JsonString;
-// use lmdb_zero as lmdb;
-// use lmdb_zero::error::Error as LmdbError;
-// use kv::{Config, Manager, Store, Error as KvError};
 use rkv::{Manager, Rkv, SingleStore, Value, StoreOptions, DatabaseFlags, EnvironmentFlags, error::{StoreError, DataError}};
 use std::{
     fmt::{Debug, Error, Formatter},
@@ -52,13 +49,13 @@ impl LmdbStorage {
                 // There is some loss of data integrity guarantees that comes with this
                 .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
             Rkv::from_env(path, env_builder)
-        }).unwrap();
+        }).expect("Could not create the environment");
 
-        let env = manager.read().unwrap();
+        let env = manager.read().expect("Could not get a read lock on the manager");
 
         // Then you can use the environment handle to get a handle to a datastore:
         let options = StoreOptions{create: true, flags: DatabaseFlags::empty()};
-        let store: SingleStore = env.open_single(CAS_BUCKET, options).unwrap();
+        let store: SingleStore = env.open_single(CAS_BUCKET, options).expect("Could not create CAS store");
 
         LmdbStorage {
             id: Uuid::new_v4(),
@@ -69,24 +66,24 @@ impl LmdbStorage {
 }
 
 impl LmdbStorage {
-    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), Error> {     
+    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {     
         let env = self.manager.read().unwrap();
-        let mut writer = env.write().unwrap();
+        let mut writer = env.write()?;
 
         self.store.put(
             &mut writer,
             content.address(),
             &Value::Str(&content.content().to_string()),
-        ).unwrap();
+        )?;
 
-        writer.commit().unwrap();
+        writer.commit()?;
 
         Ok(())
     }
 
     fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
         let env = self.manager.read().unwrap();
-        let reader = env.read().unwrap();
+        let reader = env.read()?;
 
         match self.store.get(&reader, address.clone()) {
             Ok(Some(value)) => {
@@ -98,23 +95,6 @@ impl LmdbStorage {
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }
-
-
-
-        // self.store.get(&reader, address.clone()).map(|maybe_v| {
-        //     maybe_v.map(|v| {
-        //         match v {
-        //             Value::Str(s) => JsonString::from_json(s),
-        //             _ => return Err(StoreError::DataError(DataError::Empty))
-        //         }
-        //     })
-        // })
-
-        // match self.store.get(&reader, address.clone()) {
-        //     Ok(result) => Ok(Some(JsonString::from_json(&result))),
-        //     Err(KvError::NotFound) => Ok(None),
-        //     Err(e) => Err(e)
-        // }
     }
 }
 
