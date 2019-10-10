@@ -1,12 +1,16 @@
 use holochain_persistence_api::{
-    eav::{Attribute, EaviQuery, EavFilter, EntityAttributeValueIndex, EntityAttributeValueStorage},
-    error::{PersistenceResult, PersistenceError},
+    cas::content::AddressableContent,
+    eav::{
+        Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
+    },
+    error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
-        cas::content::AddressableContent,
-
 };
 // use kv::{Config, Manager, Store, Error as KvError};
-use rkv::{Manager, Rkv, SingleStore, Value, StoreOptions, DatabaseFlags, EnvironmentFlags, error::{StoreError}};
+use rkv::{
+    error::StoreError, DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions,
+    Value,
+};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -19,7 +23,6 @@ use uuid::Uuid;
 const EAV_BUCKET: &str = "EAV";
 const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
-
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
     id: Uuid,
@@ -31,26 +34,38 @@ pub struct EavLmdbStorage<A: Attribute> {
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
         let cas_db_path = db_path.as_ref().join("eav").with_extension("db");
-        std::fs::create_dir_all(cas_db_path.clone()).expect("Could not create file path for CAS store");
-        
-        let manager = Manager::singleton().write().unwrap().get_or_create(cas_db_path.as_path(), |path: &Path| {
-            let mut env_builder = Rkv::environment_builder();
-            env_builder
-                // max size of memory map, can be changed later 
-                .set_map_size(MAX_SIZE_BYTES)
-                // max number of DBs in this environment
-                .set_max_dbs(1) 
-                // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
-                // There is some loss of data integrity guarantees that comes with this
-                .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
-            Rkv::from_env(path, env_builder)
-        }).expect("Could not create the environment");
+        std::fs::create_dir_all(cas_db_path.clone())
+            .expect("Could not create file path for CAS store");
 
-        let env = manager.read().expect("Could not get a read lock on the manager");
+        let manager = Manager::singleton()
+            .write()
+            .unwrap()
+            .get_or_create(cas_db_path.as_path(), |path: &Path| {
+                let mut env_builder = Rkv::environment_builder();
+                env_builder
+                    // max size of memory map, can be changed later
+                    .set_map_size(MAX_SIZE_BYTES)
+                    // max number of DBs in this environment
+                    .set_max_dbs(1)
+                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                    // There is some loss of data integrity guarantees that comes with this
+                    .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
+                Rkv::from_env(path, env_builder)
+            })
+            .expect("Could not create the environment");
+
+        let env = manager
+            .read()
+            .expect("Could not get a read lock on the manager");
 
         // Then you can use the environment handle to get a handle to a datastore:
-        let options = StoreOptions{create: true, flags: DatabaseFlags::empty()};
-        let store: SingleStore = env.open_single(EAV_BUCKET, options).expect("Could not create EAV store");
+        let options = StoreOptions {
+            create: true,
+            flags: DatabaseFlags::empty(),
+        };
+        let store: SingleStore = env
+            .open_single(EAV_BUCKET, options)
+            .expect("Could not create EAV store");
 
         EavLmdbStorage {
             id: Uuid::new_v4(),
@@ -69,26 +84,22 @@ impl<A: Attribute> Debug for EavLmdbStorage<A> {
     }
 }
 
-impl<A: Attribute> EavLmdbStorage<A> 
+impl<A: Attribute> EavLmdbStorage<A>
 where
-    A: Sync + Send + serde::de::DeserializeOwned
+    A: Sync + Send + serde::de::DeserializeOwned,
 {
     fn add_lmdb_eavi(
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
-
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
 
         // use a clever key naming scheme to speed up exact match queries on the entity
         let key = format!("{}::{}", eav.entity(), eav.index());
 
-        self.store.put(
-            &mut writer,
-            key,
-            &Value::Json(&eav.content().to_string()),
-        )?;
+        self.store
+            .put(&mut writer, key, &Value::Json(&eav.content().to_string()))?;
 
         writer.commit()?;
 
@@ -99,7 +110,6 @@ where
         &self,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
-        
         let env = self.manager.read().unwrap();
         let reader = env.read()?;
 
@@ -109,28 +119,29 @@ where
                 self.store
                     .iter_from(&reader, format!("{}::{}", entity, 0))? // start at the first key containing the entity address
                     .filter_map(Result::ok)
-                    .take_while(|(k, _v)| { // stop at the first key that doesn't match
-                        String::from_utf8(k.to_vec()).unwrap().contains(&entity.to_string())
+                    .take_while(|(k, _v)| {
+                        // stop at the first key that doesn't match
+                        String::from_utf8(k.to_vec())
+                            .unwrap()
+                            .contains(&entity.to_string())
                     })
-                    .filter_map(|(_k, v)| {
-                        match v {
-                            Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
-                            _ => None,
-                        }
-                    }).collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
-            },
+                    .filter_map(|(_k, v)| match v {
+                        Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
+                        _ => None,
+                    })
+                    .collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+            }
 
             _ => {
                 // In this case all we can do is iterate the entire database
                 self.store
                     .iter_start(&reader)?
                     .filter_map(Result::ok)
-                    .filter_map(|(_k, v)| {
-                        match v {
-                            Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
-                            _ => None,
-                        }
-                    }).collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+                    .filter_map(|(_k, v)| match v {
+                        Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
+                        _ => None,
+                    })
+                    .collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
             }
         };
         let entries_iter = entries.iter().cloned();
@@ -146,16 +157,16 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-        self.add_lmdb_eavi(eav).
-            map_err(|e| PersistenceError::from(format!("EAV add error: {}", e)))
+        self.add_lmdb_eavi(eav)
+            .map_err(|e| PersistenceError::from(format!("EAV add error: {}", e)))
     }
 
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
-        self.fetch_lmdb_eavi(query).
-            map_err(|e| PersistenceError::from(format!("EAV fetch error: {}", e)))
+        self.fetch_lmdb_eavi(query)
+            .map_err(|e| PersistenceError::from(format!("EAV fetch error: {}", e)))
     }
 }
 
@@ -175,11 +186,9 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{EavTestSuite},
+            storage::EavTestSuite,
         },
-        eav::{
-            Attribute, ExampleAttribute, storage::EavBencher,
-        },
+        eav::{storage::EavBencher, Attribute, ExampleAttribute},
     };
     use tempfile::tempdir;
 
@@ -217,13 +226,13 @@ pub mod tests {
     #[bench]
     fn bench_lmdb_eav_fetch_all(b: &mut test::Bencher) {
         let store = new_store();
-        EavBencher::bench_fetch_all(b, store);        
+        EavBencher::bench_fetch_all(b, store);
     }
 
     #[bench]
     fn bench_lmdb_eav_fetch_exact(b: &mut test::Bencher) {
         let store = new_store();
-        EavBencher::bench_fetch_exact(b, store);        
+        EavBencher::bench_fetch_exact(b, store);
     }
 
     #[test]

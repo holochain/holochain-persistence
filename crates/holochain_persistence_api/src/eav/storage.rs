@@ -1,16 +1,9 @@
+use crate::holochain_json_api::json::RawString;
+use cas::content::{AddressableContent, ExampleAddressableContent};
 use eav::{
-    eavi::{
-        EntityAttributeValueIndex,
-        ExampleAttribute,
-    },
-    query::EaviQuery, Attribute, EavFilter, IndexFilter,
-};
-use crate::holochain_json_api::{
-    json::{RawString},
-};
-use cas::content::{
-    ExampleAddressableContent,
-    AddressableContent
+    eavi::{EntityAttributeValueIndex, ExampleAttribute},
+    query::EaviQuery,
+    Attribute, EavFilter, IndexFilter,
 };
 use error::PersistenceResult;
 use objekt;
@@ -116,7 +109,6 @@ pub fn increment_key_till_no_collision<A: Attribute>(
 pub struct EavBencher;
 
 impl EavBencher {
-
     fn random_addressable_content() -> ExampleAddressableContent {
         let s: String = (0..4).map(|_| rand::random::<char>()).collect();
         ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
@@ -133,13 +125,13 @@ impl EavBencher {
                 &Self::random_addressable_content().address(),
             )
             .expect("Could create entityAttributeValue");
-            store.add_eavi(&eav)     
+            store.add_eavi(&eav)
         })
     }
 
     pub fn bench_fetch_all(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,       
+        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {
@@ -147,18 +139,17 @@ impl EavBencher {
                 &Self::random_addressable_content().address(),
                 &ExampleAttribute::WithPayload("favourite-color".to_string()),
                 &Self::random_addressable_content().address(),
-            ).expect("Could create entityAttributeValue");
+            )
+            .expect("Could create entityAttributeValue");
             store.add_eavi(&eav).unwrap();
         }
 
-        b.iter(|| {
-            store.fetch_eavi(&EaviQuery::default())     
-        })        
+        b.iter(|| store.fetch_eavi(&EaviQuery::default()))
     }
 
     pub fn bench_fetch_exact(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,       
+        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {
@@ -166,7 +157,8 @@ impl EavBencher {
                 &Self::random_addressable_content().address(),
                 &ExampleAttribute::WithPayload("favourite-color".to_string()),
                 &Self::random_addressable_content().address(),
-            ).expect("Could create entityAttributeValue");
+            )
+            .expect("Could create entityAttributeValue");
             store.add_eavi(&eav).unwrap();
         }
 
@@ -175,7 +167,8 @@ impl EavBencher {
             &Self::random_addressable_content().address(),
             &ExampleAttribute::WithPayload("favourite-color".to_string()),
             &Self::random_addressable_content().address(),
-        ).expect("Could create entityAttributeValue");
+        )
+        .expect("Could create entityAttributeValue");
         store.add_eavi(&eav).unwrap();
 
         b.iter(|| {
@@ -185,7 +178,7 @@ impl EavBencher {
                 EavFilter::default(),
                 IndexFilter::LatestByAttribute,
                 None,
-            ))  
-        })        
+            ))
+        })
     }
 }

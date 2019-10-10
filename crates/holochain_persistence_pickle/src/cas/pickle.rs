@@ -102,9 +102,9 @@ mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{ContentAddressableStorage, StorageTestSuite, CasBencher},
+            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
         },
-        reporting::{ReportStorage, StorageReport, },
+        reporting::{ReportStorage, StorageReport},
     };
     use tempfile::{tempdir, TempDir};
 
@@ -122,7 +122,7 @@ mod tests {
     #[bench]
     fn bench_pickle_cas_fetch(b: &mut test::Bencher) {
         let (store, _) = test_pickle_cas();
-        CasBencher::bench_fetch(b, store);        
+        CasBencher::bench_fetch(b, store);
     }
 
     #[test]

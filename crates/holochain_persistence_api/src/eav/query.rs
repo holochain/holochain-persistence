@@ -179,7 +179,7 @@ impl<'a, T: 'a + Eq> EavFilter<'a, T> {
     pub fn check(&self, b: T) -> bool {
         match self {
             Self::Exact(a) => a == &b,
-            Self::Predicate(f) => f(b) 
+            Self::Predicate(f) => f(b),
         }
     }
 }

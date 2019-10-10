@@ -1,13 +1,16 @@
+use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
         storage::ContentAddressableStorage,
     },
-    error::{PersistenceResult, PersistenceError},
+    error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use holochain_json_api::json::JsonString;
-use rkv::{Manager, Rkv, SingleStore, Value, StoreOptions, DatabaseFlags, EnvironmentFlags, error::{StoreError, DataError}};
+use rkv::{
+    error::{DataError, StoreError},
+    DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions, Value,
+};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -27,35 +30,45 @@ pub struct LmdbStorage {
 
 impl Debug for LmdbStorage {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.debug_struct("LmdbStorage")
-            .field("id", &self.id)
-            .finish()
+        f.debug_struct("LmdbStorage").field("id", &self.id).finish()
     }
 }
 
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> LmdbStorage {
         let cas_db_path = db_path.as_ref().join("cas").with_extension("db");
-        std::fs::create_dir_all(cas_db_path.clone()).expect("Could not create file path for CAS store");
-        
-        let manager = Manager::singleton().write().unwrap().get_or_create(cas_db_path.as_path(), |path: &Path| {
-            let mut env_builder = Rkv::environment_builder();
-            env_builder
-                // max size of memory map, can be changed later 
-                .set_map_size(MAX_SIZE_BYTES)
-                // max number of DBs in this environment
-                .set_max_dbs(1) 
-                // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
-                // There is some loss of data integrity guarantees that comes with this
-                .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
-            Rkv::from_env(path, env_builder)
-        }).expect("Could not create the environment");
+        std::fs::create_dir_all(cas_db_path.clone())
+            .expect("Could not create file path for CAS store");
 
-        let env = manager.read().expect("Could not get a read lock on the manager");
+        let manager = Manager::singleton()
+            .write()
+            .unwrap()
+            .get_or_create(cas_db_path.as_path(), |path: &Path| {
+                let mut env_builder = Rkv::environment_builder();
+                env_builder
+                    // max size of memory map, can be changed later
+                    .set_map_size(MAX_SIZE_BYTES)
+                    // max number of DBs in this environment
+                    .set_max_dbs(1)
+                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                    // There is some loss of data integrity guarantees that comes with this
+                    .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
+                Rkv::from_env(path, env_builder)
+            })
+            .expect("Could not create the environment");
+
+        let env = manager
+            .read()
+            .expect("Could not get a read lock on the manager");
 
         // Then you can use the environment handle to get a handle to a datastore:
-        let options = StoreOptions{create: true, flags: DatabaseFlags::empty()};
-        let store: SingleStore = env.open_single(CAS_BUCKET, options).expect("Could not create CAS store");
+        let options = StoreOptions {
+            create: true,
+            flags: DatabaseFlags::empty(),
+        };
+        let store: SingleStore = env
+            .open_single(CAS_BUCKET, options)
+            .expect("Could not create CAS store");
 
         LmdbStorage {
             id: Uuid::new_v4(),
@@ -66,7 +79,7 @@ impl LmdbStorage {
 }
 
 impl LmdbStorage {
-    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {     
+    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
 
@@ -86,11 +99,9 @@ impl LmdbStorage {
         let reader = env.read()?;
 
         match self.store.get(&reader, address.clone()) {
-            Ok(Some(value)) => {
-                match value {
-                    Value::Str(s) => Ok(Some(JsonString::from_json(s))),
-                    _ => Err(StoreError::DataError(DataError::Empty))
-                }
+            Ok(Some(value)) => match value {
+                Value::Str(s) => Ok(Some(JsonString::from_json(s))),
+                _ => Err(StoreError::DataError(DataError::Empty)),
             },
             Ok(None) => Ok(None),
             Err(e) => Err(e),
@@ -99,18 +110,15 @@ impl LmdbStorage {
 }
 
 impl ContentAddressableStorage for LmdbStorage {
-
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {        
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.lmdb_add(content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }
 
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        self.fetch(address).map(|result| {
-            match result {
-                Some(_) => true,
-                None => false,
-            }
+        self.fetch(address).map(|result| match result {
+            Some(_) => true,
+            None => false,
         })
     }
 
@@ -132,12 +140,12 @@ impl ReportStorage for LmdbStorage {
 
 #[cfg(test)]
 mod tests {
-use crate::cas::lmdb::LmdbStorage;
+    use crate::cas::lmdb::LmdbStorage;
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{ContentAddressableStorage, StorageTestSuite, CasBencher},
+            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };
@@ -157,7 +165,7 @@ use crate::cas::lmdb::LmdbStorage;
     #[bench]
     fn bench_lmdb_cas_fetch(b: &mut test::Bencher) {
         let (store, _) = test_lmdb_cas();
-        CasBencher::bench_fetch(b, store);        
+        CasBencher::bench_fetch(b, store);
     }
 
     #[test]
@@ -183,9 +191,6 @@ use crate::cas::lmdb::LmdbStorage;
         // add some more
         cas.add(&Content::from_json("more bytes"))
             .expect("could not add to CAS");
-        assert_eq!(
-            cas.get_storage_report().unwrap(),
-            StorageReport::new(0 + 0),
-        );
+        assert_eq!(cas.get_storage_report().unwrap(), StorageReport::new(0 + 0),);
     }
 }
