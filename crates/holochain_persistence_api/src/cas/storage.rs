@@ -834,12 +834,15 @@ impl CasBencher {
         mut store: impl ContentAddressableStorage,       
     ) {
         // add some values to make it realistic
-        for _ in 0..10 {
+        for _ in 0..100 {
             store.add(&CasBencher::random_addressable_content()).unwrap();
         }
 
+        let test_content = CasBencher::random_addressable_content();
+        store.add(&test_content).unwrap();
+
         b.iter(|| {
-            store.fetch(&Address::from("Qm..."))     
+            store.fetch(&test_content.address())     
         })        
     }
 }
