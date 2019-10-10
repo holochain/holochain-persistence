@@ -1,5 +1,5 @@
 use holochain_persistence_api::{
-    eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
+    eav::{Attribute, EaviQuery, EavFilter, EntityAttributeValueIndex, EntityAttributeValueStorage},
     error::{PersistenceResult, PersistenceError},
     reporting::{ReportStorage, StorageReport},
         cas::content::AddressableContent,
@@ -17,7 +17,7 @@ use std::{
 use uuid::Uuid;
 
 const EAV_BUCKET: &str = "EAV";
-const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be
+const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 
 #[derive(Clone)]
@@ -81,10 +81,13 @@ where
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
 
+        // use a clever key naming scheme to speed up exact match queries on the entity
+        let key = format!("{}::{}", eav.entity(), eav.index());
+
         self.store.put(
             &mut writer,
-            eav.index().to_string(),
-            &Value::Str(&eav.content().to_string()),
+            key,
+            &Value::Json(&eav.content().to_string()),
         )?;
 
         writer.commit()?;
@@ -100,16 +103,36 @@ where
         let env = self.manager.read().unwrap();
         let reader = env.read()?;
 
-        let entries = self.store
-            .iter_start(&reader)?
-            .filter_map(Result::ok)
-            .filter_map(|(_k, v)| {
-                match v {
-                    Some(Value::Str(s)) => serde_json::from_str(&s).ok(),
-                    _ => None,
-                }
-            })
-            .collect::<BTreeSet<EntityAttributeValueIndex<A>>>();
+        let entries = match &query.entity {
+            EavFilter::Exact(entity) => {
+                // Can optimize here thanks to the sorted keys and only iterate matching entities
+                self.store
+                    .iter_from(&reader, format!("{}::{}", entity, 0))? // start at the first key containing the entity address
+                    .filter_map(Result::ok)
+                    .take_while(|(k, _v)| { // stop at the first key that doesn't match
+                        String::from_utf8(k.to_vec()).unwrap().contains(&entity.to_string())
+                    })
+                    .filter_map(|(_k, v)| {
+                        match v {
+                            Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
+                            _ => None,
+                        }
+                    }).collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+            },
+
+            _ => {
+                // In this case all we can do is iterate the entire database
+                self.store
+                    .iter_start(&reader)?
+                    .filter_map(Result::ok)
+                    .filter_map(|(_k, v)| {
+                        match v {
+                            Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
+                            _ => None,
+                        }
+                    }).collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+            }
+        };
         let entries_iter = entries.iter().cloned();
         Ok(query.run(entries_iter))
     }
@@ -186,15 +209,21 @@ pub mod tests {
     }
 
     #[bench]
-    fn bench_lmdb_add(b: &mut test::Bencher) {
+    fn bench_lmdb_eav_add(b: &mut test::Bencher) {
         let store = new_store();
         EavBencher::bench_add(b, store);
     }
 
     #[bench]
-    fn bench_lmdb_fetch(b: &mut test::Bencher) {
+    fn bench_lmdb_eav_fetch_all(b: &mut test::Bencher) {
         let store = new_store();
-        EavBencher::bench_fetch(b, store);        
+        EavBencher::bench_fetch_all(b, store);        
+    }
+
+    #[bench]
+    fn bench_lmdb_eav_fetch_exact(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_fetch_exact(b, store);        
     }
 
     #[test]

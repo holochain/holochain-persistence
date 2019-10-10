@@ -16,7 +16,7 @@ use std::{
 use uuid::Uuid;
 
 const CAS_BUCKET: &str = "cas";
-const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be
+const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 #[derive(Clone)]
 pub struct LmdbStorage {

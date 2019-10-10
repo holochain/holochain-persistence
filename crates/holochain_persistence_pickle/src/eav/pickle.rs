@@ -135,15 +135,15 @@ pub mod tests {
     }
 
     #[bench]
-    fn bench_pickle_eav_add(b: &mut test::Bencher) {
+    fn bench_pickle_eav_fetch_all(b: &mut test::Bencher) {
         let store = new_store();
-        EavBencher::bench_add(b, store);
+        EavBencher::bench_fetch_all(b, store);        
     }
 
     #[bench]
-    fn bench_pickle_eav_fetch(b: &mut test::Bencher) {
+    fn bench_pickle_eav_fetch_exact(b: &mut test::Bencher) {
         let store = new_store();
-        EavBencher::bench_fetch(b, store);        
+        EavBencher::bench_fetch_exact(b, store);        
     }
 
     #[test]

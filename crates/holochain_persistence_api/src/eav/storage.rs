@@ -3,7 +3,7 @@ use eav::{
         EntityAttributeValueIndex,
         ExampleAttribute,
     },
-    query::EaviQuery, Attribute
+    query::EaviQuery, Attribute, EavFilter, IndexFilter,
 };
 use crate::holochain_json_api::{
     json::{RawString},
@@ -137,12 +137,12 @@ impl EavBencher {
         })
     }
 
-    pub fn bench_fetch(
+    pub fn bench_fetch_all(
         b: &mut test::Bencher,
         mut store: impl EntityAttributeValueStorage<ExampleAttribute>,       
     ) {
         // add some values to make it realistic
-        for _ in 0..10 {
+        for _ in 0..100 {
             let eav = EntityAttributeValueIndex::new(
                 &Self::random_addressable_content().address(),
                 &ExampleAttribute::WithPayload("favourite-color".to_string()),
@@ -153,6 +153,39 @@ impl EavBencher {
 
         b.iter(|| {
             store.fetch_eavi(&EaviQuery::default())     
+        })        
+    }
+
+    pub fn bench_fetch_exact(
+        b: &mut test::Bencher,
+        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,       
+    ) {
+        // add some values to make it realistic
+        for _ in 0..100 {
+            let eav = EntityAttributeValueIndex::new(
+                &Self::random_addressable_content().address(),
+                &ExampleAttribute::WithPayload("favourite-color".to_string()),
+                &Self::random_addressable_content().address(),
+            ).expect("Could create entityAttributeValue");
+            store.add_eavi(&eav).unwrap();
+        }
+
+        // add the one entry we want to test retrieval of
+        let eav = EntityAttributeValueIndex::new(
+            &Self::random_addressable_content().address(),
+            &ExampleAttribute::WithPayload("favourite-color".to_string()),
+            &Self::random_addressable_content().address(),
+        ).expect("Could create entityAttributeValue");
+        store.add_eavi(&eav).unwrap();
+
+        b.iter(|| {
+            store.fetch_eavi(&EaviQuery::new(
+                EavFilter::single(eav.entity()),
+                EavFilter::default(),
+                EavFilter::default(),
+                IndexFilter::LatestByAttribute,
+                None,
+            ))  
         })        
     }
 }
