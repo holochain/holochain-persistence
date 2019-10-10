@@ -15,10 +15,10 @@
 Add `holochain_persistence_lmdb` crate to your `Cargo.toml`. Below is a stub for creating a storage unit and adding some content.
 
 ```rust
-use holochain_persistence_lmdb::cas::LmdbStorate;
+use holochain_persistence_lmdb::cas::LmdbStorage;
 use tempfile::tempdir;
 
-pub fn init() -> LmdbStorate {
+pub fn init() -> LmdbStorage {
   let dir = tempdir().expect("Could not create a tempdir for CAS.");
   let store = LmdbStorate::new(dir.path()).unwrap();
   store.add(<some_content>).expect("added some content");
