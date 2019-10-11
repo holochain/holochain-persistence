@@ -40,7 +40,7 @@ impl<A: Attribute> EavLmdbStorage<A> {
         let manager = Manager::singleton()
             .write()
             .unwrap()
-            .get_or_create(cas_db_path.as_path(), |path: &Path| {
+            .get_or_create(eav_db_path.as_path(), |path: &Path| {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
