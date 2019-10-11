@@ -8,7 +8,7 @@ use holochain_persistence_api::{
 };
 // use kv::{Config, Manager, Store, Error as KvError};
 use rkv::{
-    error::StoreError, DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions,
+    error::StoreError,
     Value,
 };
 use std::{
@@ -16,61 +16,24 @@ use std::{
     fmt::{Debug, Error, Formatter},
     marker::{PhantomData, Send, Sync},
     path::Path,
-    sync::{Arc, RwLock},
 };
 use uuid::Uuid;
+use crate::common::LmdbInstance;
 
 const EAV_BUCKET: &str = "EAV";
-const INITIAL_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
     id: Uuid,
-    store: SingleStore,
-    manager: Arc<RwLock<Rkv>>,
+    lmdb: LmdbInstance,
     attribute: PhantomData<A>,
 }
 
 impl<A: Attribute> EavLmdbStorage<A> {
-    pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
-        let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
-        std::fs::create_dir_all(eav_db_path.clone())
-            .expect("Could not create file path for CAS store");
-
-        let manager = Manager::singleton()
-            .write()
-            .unwrap()
-            .get_or_create(eav_db_path.as_path(), |path: &Path| {
-                let mut env_builder = Rkv::environment_builder();
-                env_builder
-                    // max size of memory map, can be changed later
-                    .set_map_size(INITIAL_SIZE_BYTES)
-                    // max number of DBs in this environment
-                    .set_max_dbs(1)
-                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
-                    // There is some loss of data integrity guarantees that comes with this
-                    .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
-                Rkv::from_env(path, env_builder)
-            })
-            .expect("Could not create the environment");
-
-        let env = manager
-            .read()
-            .expect("Could not get a read lock on the manager");
-
-        // Then you can use the environment handle to get a handle to a datastore:
-        let options = StoreOptions {
-            create: true,
-            flags: DatabaseFlags::empty(),
-        };
-        let store: SingleStore = env
-            .open_single(EAV_BUCKET, options)
-            .expect("Could not create EAV store");
-
+    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> EavLmdbStorage<A> {
         EavLmdbStorage {
             id: Uuid::new_v4(),
-            store: store,
-            manager: manager.clone(),
+            lmdb: LmdbInstance::new(EAV_BUCKET, db_path, initial_map_bytes),
             attribute: PhantomData,
         }
     }
@@ -92,13 +55,13 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.manager.read().unwrap();
+        let env = self.lmdb.manager.read().unwrap();
         let mut writer = env.write()?;
 
         // use a clever key naming scheme to speed up exact match queries on the entity
         let key = format!("{}::{}", eav.entity(), eav.index());
 
-        self.store
+        self.lmdb.store
             .put(&mut writer, key, &Value::Json(&eav.content().to_string()))?;
 
         writer.commit()?;
@@ -110,13 +73,13 @@ where
         &self,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.manager.read().unwrap();
+        let env = self.lmdb.manager.read().unwrap();
         let reader = env.read()?;
 
         let entries = match &query.entity {
             EavFilter::Exact(entity) => {
                 // Can optimize here thanks to the sorted keys and only iterate matching entities
-                self.store
+                self.lmdb.store
                     .iter_from(&reader, format!("{}::{}", entity, 0))? // start at the first key containing the entity address
                     .filter_map(Result::ok)
                     .take_while(|(k, _v)| {
@@ -134,7 +97,7 @@ where
 
             _ => {
                 // In this case all we can do is iterate the entire database
-                self.store
+                self.lmdb.store
                     .iter_start(&reader)?
                     .filter_map(Result::ok)
                     .filter_map(|(_k, v)| match v {
@@ -204,7 +167,7 @@ pub mod tests {
             ExampleAddressableContent::try_from_content(&RawString::from("blue").into()).unwrap();
 
         EavTestSuite::test_round_trip(
-            EavLmdbStorage::new(temp_path),
+            EavLmdbStorage::new(temp_path, None),
             entity_content,
             attribute,
             value_content,
@@ -214,7 +177,7 @@ pub mod tests {
     fn new_store<A: Attribute>() -> EavLmdbStorage<A> {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        EavLmdbStorage::new(temp_path)
+        EavLmdbStorage::new(temp_path, None)
     }
 
     #[bench]
@@ -239,7 +202,7 @@ pub mod tests {
     fn lmdb_eav_one_to_many() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let eav_storage = EavLmdbStorage::new(temp_path);
+        let eav_storage = EavLmdbStorage::new(temp_path, None);
         EavTestSuite::test_one_to_many::<
             ExampleAddressableContent,
             ExampleAttribute,
@@ -251,7 +214,7 @@ pub mod tests {
     fn lmdb_eav_many_to_one() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let eav_storage = EavLmdbStorage::new(temp_path);
+        let eav_storage = EavLmdbStorage::new(temp_path, None);
         EavTestSuite::test_many_to_one::<
             ExampleAddressableContent,
             ExampleAttribute,
@@ -263,7 +226,7 @@ pub mod tests {
     fn lmdb_eav_range() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let eav_storage = EavLmdbStorage::new(temp_path);
+        let eav_storage = EavLmdbStorage::new(temp_path, None);
         EavTestSuite::test_range::<
             ExampleAddressableContent,
             ExampleAttribute,
@@ -275,7 +238,7 @@ pub mod tests {
     fn lmdb_eav_prefixes() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let eav_storage = EavLmdbStorage::new(temp_path);
+        let eav_storage = EavLmdbStorage::new(temp_path, None);
         EavTestSuite::test_multiple_attributes::<
             ExampleAddressableContent,
             ExampleAttribute,
@@ -293,7 +256,7 @@ pub mod tests {
     fn lmdb_tombstone() {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let eav_storage = EavLmdbStorage::new(temp_path);
+        let eav_storage = EavLmdbStorage::new(temp_path, None);
         EavTestSuite::test_tombstone::<ExampleAddressableContent, EavLmdbStorage<_>>(eav_storage)
     }
 }

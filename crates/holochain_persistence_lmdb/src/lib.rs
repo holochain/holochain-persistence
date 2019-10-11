@@ -9,5 +9,6 @@
 #[allow(unused_extern_crates)]
 extern crate test;
 
+mod common;
 pub mod cas;
 pub mod eav;

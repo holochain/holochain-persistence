@@ -8,24 +8,21 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
 };
 use rkv::{
-    error::{DataError, StoreError},
-    DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions, Value,
+    error::{DataError, StoreError}, Value,
 };
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
-    sync::{Arc, RwLock},
 };
 use uuid::Uuid;
+use crate::common::LmdbInstance;
 
 const CAS_BUCKET: &str = "cas";
-const INITIAL_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 #[derive(Clone)]
 pub struct LmdbStorage {
     id: Uuid,
-    store: SingleStore,
-    manager: Arc<RwLock<Rkv>>,
+    lmdb: LmdbInstance,
 }
 
 impl Debug for LmdbStorage {
@@ -35,55 +32,20 @@ impl Debug for LmdbStorage {
 }
 
 impl LmdbStorage {
-    pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> LmdbStorage {
-        let cas_db_path = db_path.as_ref().join("cas").with_extension("db");
-        std::fs::create_dir_all(cas_db_path.clone())
-            .expect("Could not create file path for CAS store");
-
-        let manager = Manager::singleton()
-            .write()
-            .unwrap()
-            .get_or_create(cas_db_path.as_path(), |path: &Path| {
-                let mut env_builder = Rkv::environment_builder();
-                env_builder
-                    // max size of memory map, can be changed later
-                    .set_map_size(INITIAL_SIZE_BYTES)
-                    // max number of DBs in this environment
-                    .set_max_dbs(1)
-                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
-                    // There is some loss of data integrity guarantees that comes with this
-                    .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
-                Rkv::from_env(path, env_builder)
-            })
-            .expect("Could not create the environment");
-
-        let env = manager
-            .read()
-            .expect("Could not get a read lock on the manager");
-
-        // Then you can use the environment handle to get a handle to a datastore:
-        let options = StoreOptions {
-            create: true,
-            flags: DatabaseFlags::empty(),
-        };
-        let store: SingleStore = env
-            .open_single(CAS_BUCKET, options)
-            .expect("Could not create CAS store");
-
+    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> LmdbStorage {
         LmdbStorage {
             id: Uuid::new_v4(),
-            store: store,
-            manager: manager.clone(),
+            lmdb: LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes),
         }
     }
 }
 
 impl LmdbStorage {
     fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {
-        let env = self.manager.read().unwrap();
+        let env = self.lmdb.manager.read().unwrap();
         let mut writer = env.write()?;
 
-        self.store.put(
+        self.lmdb.store.put(
             &mut writer,
             content.address(),
             &Value::Str(&content.content().to_string()),
@@ -95,10 +57,10 @@ impl LmdbStorage {
     }
 
     fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
-        let env = self.manager.read().unwrap();
+        let env = self.lmdb.manager.read().unwrap();
         let reader = env.read()?;
 
-        match self.store.get(&reader, address.clone()) {
+        match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Str(s) => Ok(Some(JsonString::from_json(s))),
                 _ => Err(StoreError::DataError(DataError::Empty)),
@@ -153,7 +115,7 @@ mod tests {
 
     pub fn test_lmdb_cas() -> (LmdbStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
-        (LmdbStorage::new(dir.path()), dir)
+        (LmdbStorage::new(dir.path(), None), dir)
     }
 
     #[bench]
