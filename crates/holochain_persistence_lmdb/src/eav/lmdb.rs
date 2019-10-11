@@ -21,7 +21,7 @@ use std::{
 use uuid::Uuid;
 
 const EAV_BUCKET: &str = "EAV";
-const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
+const INITIAL_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
@@ -34,7 +34,7 @@ pub struct EavLmdbStorage<A: Attribute> {
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
         let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
-        std::fs::create_dir_all(cas_db_path.clone())
+        std::fs::create_dir_all(eav_db_path.clone())
             .expect("Could not create file path for CAS store");
 
         let manager = Manager::singleton()
@@ -44,7 +44,7 @@ impl<A: Attribute> EavLmdbStorage<A> {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
-                    .set_map_size(MAX_SIZE_BYTES)
+                    .set_map_size(INITIAL_SIZE_BYTES)
                     // max number of DBs in this environment
                     .set_max_dbs(1)
                     // Thes flags make writes waaaaay faster by async writing to disk rather than blocking

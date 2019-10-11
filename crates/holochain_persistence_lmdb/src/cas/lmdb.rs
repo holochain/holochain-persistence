@@ -19,7 +19,7 @@ use std::{
 use uuid::Uuid;
 
 const CAS_BUCKET: &str = "cas";
-const MAX_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
+const INITIAL_SIZE_BYTES: usize = 104857600; // TODO: Discuss what this should be, currently 100MB
 
 #[derive(Clone)]
 pub struct LmdbStorage {
@@ -47,7 +47,7 @@ impl LmdbStorage {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
-                    .set_map_size(MAX_SIZE_BYTES)
+                    .set_map_size(INITIAL_SIZE_BYTES)
                     // max number of DBs in this environment
                     .set_max_dbs(1)
                     // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
