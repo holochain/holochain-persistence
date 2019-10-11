@@ -33,7 +33,7 @@ pub struct EavLmdbStorage<A: Attribute> {
 
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(db_path: P) -> EavLmdbStorage<A> {
-        let cas_db_path = db_path.as_ref().join("eav").with_extension("db");
+        let eav_db_path = db_path.as_ref().join("eav").with_extension("db");
         std::fs::create_dir_all(cas_db_path.clone())
             .expect("Could not create file path for CAS store");
 
