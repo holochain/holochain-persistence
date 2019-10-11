@@ -1,3 +1,4 @@
+use crate::common::LmdbInstance;
 use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
@@ -8,14 +9,14 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
 };
 use rkv::{
-    error::{DataError, StoreError}, Value,
+    error::{DataError, StoreError},
+    Value,
 };
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
 };
 use uuid::Uuid;
-use crate::common::LmdbInstance;
 
 const CAS_BUCKET: &str = "cas";
 
@@ -32,7 +33,10 @@ impl Debug for LmdbStorage {
 }
 
 impl LmdbStorage {
-    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> LmdbStorage {
+    pub fn new<P: AsRef<Path> + Clone>(
+        db_path: P,
+        initial_map_bytes: Option<usize>,
+    ) -> LmdbStorage {
         LmdbStorage {
             id: Uuid::new_v4(),
             lmdb: LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes),

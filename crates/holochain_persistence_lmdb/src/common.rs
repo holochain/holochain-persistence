@@ -1,6 +1,4 @@
-use rkv::{
-    DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions,
-};
+use rkv::{DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
@@ -10,17 +8,20 @@ const DEFAULT_INITIAL_MAP_BYTES: usize = 104857600;
 
 #[derive(Clone)]
 pub(crate) struct LmdbInstance {
-	pub store: SingleStore,
-	pub manager: Arc<RwLock<Rkv>>
+    pub store: SingleStore,
+    pub manager: Arc<RwLock<Rkv>>,
 }
 
 impl LmdbInstance {
-	pub fn new<P: AsRef<Path> + Clone>(db_name: &str, path: P, initial_map_bytes: Option<usize>) -> LmdbInstance {
-		let db_path = path.as_ref().join(db_name).with_extension("db");
-        std::fs::create_dir_all(db_path.clone())
-            .expect("Could not create file path for store");
+    pub fn new<P: AsRef<Path> + Clone>(
+        db_name: &str,
+        path: P,
+        initial_map_bytes: Option<usize>,
+    ) -> LmdbInstance {
+        let db_path = path.as_ref().join(db_name).with_extension("db");
+        std::fs::create_dir_all(db_path.clone()).expect("Could not create file path for store");
 
-		let manager = Manager::singleton()
+        let manager = Manager::singleton()
             .write()
             .unwrap()
             .get_or_create(db_path.as_path(), |path: &Path| {
@@ -54,5 +55,5 @@ impl LmdbInstance {
             store: store,
             manager: manager.clone(),
         }
-	}
+    }
 }

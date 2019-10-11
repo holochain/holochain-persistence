@@ -7,10 +7,8 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
 };
 // use kv::{Config, Manager, Store, Error as KvError};
-use rkv::{
-    error::StoreError,
-    Value,
-};
+use crate::common::LmdbInstance;
+use rkv::{error::StoreError, Value};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -18,7 +16,6 @@ use std::{
     path::Path,
 };
 use uuid::Uuid;
-use crate::common::LmdbInstance;
 
 const EAV_BUCKET: &str = "EAV";
 
@@ -30,7 +27,10 @@ pub struct EavLmdbStorage<A: Attribute> {
 }
 
 impl<A: Attribute> EavLmdbStorage<A> {
-    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> EavLmdbStorage<A> {
+    pub fn new<P: AsRef<Path> + Clone>(
+        db_path: P,
+        initial_map_bytes: Option<usize>,
+    ) -> EavLmdbStorage<A> {
         EavLmdbStorage {
             id: Uuid::new_v4(),
             lmdb: LmdbInstance::new(EAV_BUCKET, db_path, initial_map_bytes),
@@ -61,7 +61,8 @@ where
         // use a clever key naming scheme to speed up exact match queries on the entity
         let key = format!("{}::{}", eav.entity(), eav.index());
 
-        self.lmdb.store
+        self.lmdb
+            .store
             .put(&mut writer, key, &Value::Json(&eav.content().to_string()))?;
 
         writer.commit()?;
@@ -79,7 +80,8 @@ where
         let entries = match &query.entity {
             EavFilter::Exact(entity) => {
                 // Can optimize here thanks to the sorted keys and only iterate matching entities
-                self.lmdb.store
+                self.lmdb
+                    .store
                     .iter_from(&reader, format!("{}::{}", entity, 0))? // start at the first key containing the entity address
                     .filter_map(Result::ok)
                     .take_while(|(k, _v)| {
@@ -97,7 +99,8 @@ where
 
             _ => {
                 // In this case all we can do is iterate the entire database
-                self.lmdb.store
+                self.lmdb
+                    .store
                     .iter_start(&reader)?
                     .filter_map(Result::ok)
                     .filter_map(|(_k, v)| match v {
