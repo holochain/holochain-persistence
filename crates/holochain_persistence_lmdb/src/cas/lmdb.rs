@@ -46,18 +46,10 @@ impl LmdbStorage {
 
 impl LmdbStorage {
     fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
-        let mut writer = env.write()?;
-
-        self.lmdb.store.put(
-            &mut writer,
+        self.lmdb.add(
             content.address(),
-            &Value::Str(&content.content().to_string()),
-        )?;
-
-        writer.commit()?;
-
-        Ok(())
+            &Value::Json(&content.content().to_string()),
+        )
     }
 
     fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
@@ -66,7 +58,7 @@ impl LmdbStorage {
 
         match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {
-                Value::Str(s) => Ok(Some(JsonString::from_json(s))),
+                Value::Json(s) => Ok(Some(JsonString::from_json(s))),
                 _ => Err(StoreError::DataError(DataError::Empty)),
             },
             Ok(None) => Ok(None),

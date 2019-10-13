@@ -1,4 +1,4 @@
-use rkv::{DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions};
+use rkv::{DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions, StoreError, Value};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
@@ -55,5 +55,17 @@ impl LmdbInstance {
             store: store,
             manager: manager.clone(),
         }
+    }
+
+    pub fn add<K: AsRef<[u8]>>(&self, key: K, value: &Value) -> Result<(), StoreError> {
+        let env = self.manager.read().unwrap();
+        let mut writer = env.write()?;
+        self.store.put(
+            &mut writer,
+            key,
+            value,
+        )?;
+        writer.commit()?;
+        Ok(())
     }
 }

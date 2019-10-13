@@ -55,18 +55,10 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
-        let mut writer = env.write()?;
-
         // use a clever key naming scheme to speed up exact match queries on the entity
         let key = format!("{}::{}", eav.entity(), eav.index());
-
         self.lmdb
-            .store
-            .put(&mut writer, key, &Value::Json(&eav.content().to_string()))?;
-
-        writer.commit()?;
-
+            .add(key, &Value::Json(&eav.content().to_string()))?;
         Ok(Some(eav.clone()))
     }
 
