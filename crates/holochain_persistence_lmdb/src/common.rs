@@ -1,10 +1,11 @@
 use rkv::{DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreOptions, StoreError, Value};
+use lmdb::Error as LmdbError;
 use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
 
-const DEFAULT_INITIAL_MAP_BYTES: usize = 104857600;
+const DEFAULT_INITIAL_MAP_BYTES: usize = 100*1024*1024;
 
 #[derive(Clone)]
 pub(crate) struct LmdbInstance {
@@ -57,15 +58,69 @@ impl LmdbInstance {
         }
     }
 
-    pub fn add<K: AsRef<[u8]>>(&self, key: K, value: &Value) -> Result<(), StoreError> {
+    pub fn add<K: AsRef<[u8]> + Clone>(&self, key: K, value: &Value) -> Result<(), StoreError> {
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
+
         self.store.put(
             &mut writer,
-            key,
+            key.clone(),
             value,
         )?;
-        writer.commit()?;
+
+        match writer.commit() {
+            Err(StoreError::LmdbError(LmdbError::MapFull)) => {
+                // double the mmap and then try again
+                let map_size = env.info()?.map_size();
+                env.set_map_size(map_size*2)?;
+                self.add(key, value)           
+            },
+            r => r, // preserve any other errors
+        }?;
         Ok(())
+    }
+
+    pub fn info(&self) -> Result<rkv::Info, StoreError> {
+        self.manager.read().unwrap().info()
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use holochain_persistence_api::cas::{
+        content::AddressableContent,
+        storage::CasBencher
+    };
+
+    #[test]
+    fn can_grow_map_on_write() {
+        // make a db with a 1MB MMAP. This seems to be the lowest you an go (probably OS dependent)
+        let inititial_mmap_size = 1024*1024;
+        let dir = tempdir().expect("Could not create a tempdir for CAS testing");
+        let lmdb = LmdbInstance::new("can_grow_map_on_write", dir.path(), Some(inititial_mmap_size));
+        
+        // put data in there until the mmap size changes
+        while lmdb.info().unwrap().map_size() == inititial_mmap_size {
+            let content = CasBencher::random_addressable_content();
+            lmdb.add(content.address(), &Value::Json(&content.content().to_string())).unwrap();
+        }
+
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size*2,
+        );
+
+        // Do it again for good measure
+        while lmdb.info().unwrap().map_size() == 2*inititial_mmap_size {
+            let content = CasBencher::random_addressable_content();
+            lmdb.add(content.address(), &Value::Json(&content.content().to_string())).unwrap();
+        }
+
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size*4,
+        );
     }
 }

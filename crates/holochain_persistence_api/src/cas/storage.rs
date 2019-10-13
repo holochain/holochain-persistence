@@ -814,7 +814,7 @@ impl EavTestSuite {
 pub struct CasBencher;
 
 impl CasBencher {
-    fn random_addressable_content() -> ExampleAddressableContent {
+    pub fn random_addressable_content() -> ExampleAddressableContent {
         let s: String = (0..4).map(|_| rand::random::<char>()).collect();
         ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
     }
