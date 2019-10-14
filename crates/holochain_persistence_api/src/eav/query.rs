@@ -154,32 +154,39 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
 }
 
 /// Represents a filter type which takes in a function to match on
-pub struct EavFilter<'a, T: 'a + Eq>(Box<dyn Fn(T) -> bool + 'a>);
+// pub struct EavFilter<'a, T: 'a + Eq>(Box<dyn Fn(T) -> bool + 'a>);
+pub enum EavFilter<'a, T: 'a + Eq> {
+    Exact(T),
+    Predicate(Box<dyn Fn(T) -> bool + 'a>),
+}
 
 impl<'a, T: 'a + Eq> EavFilter<'a, T> {
     pub fn single(val: T) -> Self {
-        Self(Box::new(move |v| v == val))
+        Self::Exact(val)
     }
 
     pub fn multiple(vals: Vec<T>) -> Self {
-        Self(Box::new(move |val| vals.iter().any(|v| *v == val)))
+        Self::Predicate(Box::new(move |val| vals.iter().any(|v| *v == val)))
     }
 
     pub fn predicate<F>(predicate: F) -> Self
     where
         F: Fn(T) -> bool + 'a,
     {
-        Self(Box::new(predicate))
+        Self::Predicate(Box::new(predicate))
     }
 
-    pub fn check(&self, val: T) -> bool {
-        self.0(val)
+    pub fn check(&self, b: T) -> bool {
+        match self {
+            Self::Exact(a) => a == &b,
+            Self::Predicate(f) => f(b),
+        }
     }
 }
 
 impl<'a, T: Eq> Default for EavFilter<'a, T> {
     fn default() -> EavFilter<'a, T> {
-        Self(Box::new(|_| true))
+        Self::Predicate(Box::new(|_| true))
     }
 }
 

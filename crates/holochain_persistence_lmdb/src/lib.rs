@@ -10,4 +10,5 @@
 extern crate test;
 
 pub mod cas;
+mod common;
 pub mod eav;

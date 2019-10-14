@@ -102,7 +102,7 @@ mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{ContentAddressableStorage, StorageTestSuite},
+            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };
@@ -111,6 +111,18 @@ mod tests {
     pub fn test_pickle_cas() -> (PickleStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
         (PickleStorage::new(dir.path()), dir)
+    }
+
+    #[bench]
+    fn bench_pickle_cas_add(b: &mut test::Bencher) {
+        let (store, _) = test_pickle_cas();
+        CasBencher::bench_add(b, store);
+    }
+
+    #[bench]
+    fn bench_pickle_cas_fetch(b: &mut test::Bencher) {
+        let (store, _) = test_pickle_cas();
+        CasBencher::bench_fetch(b, store);
     }
 
     #[test]

@@ -16,7 +16,6 @@ use std::{
     time::Duration,
 };
 use uuid::Uuid;
-
 const PERSISTENCE_PERIODICITY_MS: Duration = Duration::from_millis(5000);
 
 #[derive(Clone)]
@@ -125,9 +124,33 @@ pub mod tests {
             content::{AddressableContent, ExampleAddressableContent},
             storage::EavTestSuite,
         },
-        eav::ExampleAttribute,
+        eav::{Attribute, EavBencher, ExampleAttribute},
     };
     use tempfile::tempdir;
+
+    fn new_store<A: Attribute>() -> EavPickleStorage<A> {
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        EavPickleStorage::new(temp_path)
+    }
+
+    #[bench]
+    fn bench_pickle_eav_add(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_add(b, store);
+    }
+
+    #[bench]
+    fn bench_pickle_eav_fetch_all(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_fetch_all(b, store);
+    }
+
+    #[bench]
+    fn bench_pickle_eav_fetch_exact(b: &mut test::Bencher) {
+        let store = new_store();
+        EavBencher::bench_fetch_exact(b, store);
+    }
 
     #[test]
     fn pickle_eav_round_trip() {

@@ -4,7 +4,7 @@
 //! A test suite for CAS is also implemented here.
 
 use crate::{
-    cas::content::{Address, AddressableContent, Content},
+    cas::content::{Address, AddressableContent, Content, ExampleAddressableContent},
     eav::{
         Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
         IndexFilter,
@@ -808,6 +808,33 @@ impl EavTestSuite {
                 ))
                 .unwrap()
         );
+    }
+}
+
+pub struct CasBencher;
+
+impl CasBencher {
+    pub fn random_addressable_content() -> ExampleAddressableContent {
+        let s: String = (0..4).map(|_| rand::random::<char>()).collect();
+        ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
+    }
+
+    pub fn bench_add(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
+        b.iter(|| store.add(&CasBencher::random_addressable_content()))
+    }
+
+    pub fn bench_fetch(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
+        // add some values to make it realistic
+        for _ in 0..100 {
+            store
+                .add(&CasBencher::random_addressable_content())
+                .unwrap();
+        }
+
+        let test_content = CasBencher::random_addressable_content();
+        store.add(&test_content).unwrap();
+
+        b.iter(|| store.fetch(&test_content.address()))
     }
 }
 

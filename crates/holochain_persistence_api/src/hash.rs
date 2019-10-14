@@ -63,6 +63,12 @@ impl<'a> TryInto<Vec<u8>> for &'a HashString {
     }
 }
 
+impl<'a> AsRef<[u8]> for HashString {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
 impl HashString {
     pub fn new() -> HashString {
         HashString("".to_string())
