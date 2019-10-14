@@ -47,6 +47,23 @@ impl<A: Attribute> Debug for EavLmdbStorage<A> {
     }
 }
 
+fn handle_cursor_result<A: Attribute>(
+    result: Result<(&[u8], Option<rkv::Value>), StoreError>,
+) -> Result<EntityAttributeValueIndex<A>, StoreError>
+where
+    A: Sync + Send + serde::de::DeserializeOwned,
+{
+    match result {
+        Ok((_k, Some(Value::Json(s)))) => Ok(serde_json::from_str(&s).unwrap()),
+        Ok((_k, None)) => Err(StoreError::DataError(rkv::DataError::Empty)),
+        Ok((_k, Some(_v))) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
+    }
+}
+
 impl<A: Attribute> EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
@@ -75,18 +92,17 @@ where
                 self.lmdb
                     .store
                     .iter_from(&reader, format!("{}::{}", entity, 0))? // start at the first key containing the entity address
-                    .filter_map(Result::ok)
-                    .take_while(|(k, _v)| {
-                        // stop at the first key that doesn't match
-                        String::from_utf8(k.to_vec())
-                            .unwrap()
-                            .contains(&entity.to_string())
+                    .take_while(|r| {
+                        // stop at the first key that doesn't match (but keep taking errors)
+                        match r {
+                            Ok((k, _)) => String::from_utf8(k.to_vec())
+                                .unwrap()
+                                .contains(&entity.to_string()),
+                            _ => true,
+                        }
                     })
-                    .filter_map(|(_k, v)| match v {
-                        Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
-                        _ => None,
-                    })
-                    .collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+                    .map(handle_cursor_result)
+                    .collect::<Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError>>()?
             }
 
             _ => {
@@ -94,12 +110,8 @@ where
                 self.lmdb
                     .store
                     .iter_start(&reader)?
-                    .filter_map(Result::ok)
-                    .filter_map(|(_k, v)| match v {
-                        Some(Value::Json(s)) => serde_json::from_str(&s).ok(),
-                        _ => None,
-                    })
-                    .collect::<BTreeSet<EntityAttributeValueIndex<A>>>()
+                    .map(handle_cursor_result)
+                    .collect::<Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError>>()?
             }
         };
         let entries_iter = entries.iter().cloned();

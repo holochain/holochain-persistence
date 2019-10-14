@@ -78,6 +78,7 @@ impl LmdbInstance {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {
         self.manager.read().unwrap().info()
     }
