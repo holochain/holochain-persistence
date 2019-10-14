@@ -72,10 +72,23 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
+        let env = self.lmdb.manager.read().unwrap();
+        let reader = env.read()?;
+
         // use a clever key naming scheme to speed up exact match queries on the entity
-        let key = format!("{}::{}", eav.entity(), eav.index());
+        let mut new_eav = eav.clone();
+        let mut key = format!("{}::{}", new_eav.entity(), new_eav.index());
+
+        // need to check there isn't a duplicate key though and if there is create a new EAVI which
+        // will have a more recent timestamp
+        while let Ok(Some(_)) = self.lmdb.store.get(&reader, key.clone()) {
+            new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
+                .unwrap();
+            key = format!("{}::{}", new_eav.entity(), new_eav.index());
+        }
+
         self.lmdb
-            .add(key, &Value::Json(&eav.content().to_string()))?;
+            .add(key, &Value::Json(&new_eav.content().to_string()))?;
         Ok(Some(eav.clone()))
     }
 
