@@ -93,13 +93,10 @@ impl HashString {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::{cas::content::AddressableContent, eav::eavi::test_entry_a};
     use multihash::Hash;
-
-    /// dummy hash based on the key of test_entry_a()
-    pub fn test_hash() -> HashString {
-        test_entry_a().address()
-    }
+    use crate::fixture::test_hash_a;
+    use crate::fixture::test_entry_a;
+    use cas::content::AddressableContent;
 
     #[test]
     /// show From<String> implementation
@@ -107,7 +104,7 @@ pub mod tests {
         assert_eq!(HashString::new(), HashString::from("".to_string()),);
 
         assert_eq!(
-            test_hash(),
+            test_hash_a(),
             HashString::from(test_entry_a().address().to_string()),
         );
     }
@@ -117,7 +114,7 @@ pub mod tests {
     fn from_str_test() {
         assert_eq!(HashString::new(), HashString::from(""));
 
-        assert_eq!(test_hash(), HashString::from(test_entry_a().address()),);
+        assert_eq!(test_hash_a(), HashString::from(test_entry_a().address()),);
     }
 
     #[test]
