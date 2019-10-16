@@ -10,7 +10,8 @@ for crate in \
  holochain_persistence_api \
  holochain_persistence_file \
  holochain_persistence_mem \
- holochain_persistence_pickle
+ holochain_persistence_pickle \
+ holochain_persistence_lmdb
 do
  cargo package --manifest-path "crates/$crate/Cargo.toml"
  cargo publish --manifest-path "crates/$crate/Cargo.toml"
