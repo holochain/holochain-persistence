@@ -93,10 +93,9 @@ impl HashString {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use multihash::Hash;
-    use crate::fixture::test_hash_a;
-    use crate::fixture::test_entry_a;
+    use crate::fixture::{test_entry_a, test_hash_a};
     use cas::content::AddressableContent;
+    use multihash::Hash;
 
     #[test]
     /// show From<String> implementation

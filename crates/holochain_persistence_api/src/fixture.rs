@@ -1,9 +1,6 @@
 use crate::cas::content::Content;
-use cas::content::Address;
-use eav::eavi::ExampleAttribute;
-use eav::eavi::EntityAttributeValueIndex;
-use cas::content::AddressableContent;
-use eav::eavi::ExampleEntry;
+use cas::content::{Address, AddressableContent};
+use eav::eavi::{EntityAttributeValueIndex, ExampleAttribute, ExampleEntry};
 use hash::HashString;
 
 /// dummy hash based on the key of test_entry_a()

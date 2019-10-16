@@ -344,10 +344,6 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use fixture::test_eav_entity;
-    use fixture::test_eav;
-    use fixture::test_eav_address;
-    use fixture::test_eav_content;
     use crate::{
         cas::{
             content::{AddressableContent, AddressableContentTestSuite, ExampleAddressableContent},
@@ -357,6 +353,7 @@ pub mod tests {
         },
         eav::EntityAttributeValueIndex,
     };
+    use fixture::{test_eav, test_eav_address, test_eav_content, test_eav_entity};
     use holochain_json_api::json::RawString;
 
     pub fn test_eav_storage<A: Attribute>() -> ExampleEntityAttributeValueStorage<A>
