@@ -6,6 +6,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use holochain_logging::prelude::*;
 
 const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
 
@@ -64,17 +65,19 @@ impl LmdbInstance {
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
 
-        self.store.put(&mut writer, key.clone(), value)?;
-
-        match writer.commit() {
+        match self.store.put(&mut writer, key.clone(), value)
+        .and_then(|_| {
+            writer.commit()
+        }) {
             Err(StoreError::LmdbError(LmdbError::MapFull)) => {
-                // double the mmap and then try again
+                trace!("Insufficient space in MMAP, doubling and trying again");
                 let map_size = env.info()?.map_size();
                 env.set_map_size(map_size * 2)?;
-                self.add(key, value)
+                self.add(key.clone(), value)
             }
             r => r, // preserve any other errors
         }?;
+
         Ok(())
     }
 
@@ -124,5 +127,24 @@ pub mod tests {
         }
 
         assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * 4,);
+    }
+
+    #[test]
+    fn can_write_entry_larger_than_map() {
+        // can write a single entry that is much larger than the current mmap
+        let inititial_mmap_size = 1024 * 1024;
+        let dir = tempdir().expect("Could not create a tempdir for CAS testing");
+        let lmdb = LmdbInstance::new(
+            "can_grow_map_on_write",
+            dir.path(),
+            Some(inititial_mmap_size),
+        );
+
+        let data: Vec<u8> = std::iter::repeat(0).take(10 * inititial_mmap_size).collect();
+
+        lmdb.add(
+            "a",
+            &Value::Json(&String::from_utf8(data).unwrap()),
+        ).expect("could not write to lmdb");
     }
 }
