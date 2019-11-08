@@ -1,3 +1,4 @@
+use holochain_logging::prelude::*;
 use lmdb::Error as LmdbError;
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
@@ -6,7 +7,6 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use holochain_logging::prelude::*;
 
 const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
 
@@ -65,10 +65,11 @@ impl LmdbInstance {
         let env = self.manager.read().unwrap();
         let mut writer = env.write()?;
 
-        match self.store.put(&mut writer, key.clone(), value)
-        .and_then(|_| {
-            writer.commit()
-        }) {
+        match self
+            .store
+            .put(&mut writer, key.clone(), value)
+            .and_then(|_| writer.commit())
+        {
             Err(StoreError::LmdbError(LmdbError::MapFull)) => {
                 trace!("Insufficient space in MMAP, doubling and trying again");
                 let map_size = env.info()?.map_size();
@@ -140,11 +141,11 @@ pub mod tests {
             Some(inititial_mmap_size),
         );
 
-        let data: Vec<u8> = std::iter::repeat(0).take(10 * inititial_mmap_size).collect();
+        let data: Vec<u8> = std::iter::repeat(0)
+            .take(10 * inititial_mmap_size)
+            .collect();
 
-        lmdb.add(
-            "a",
-            &Value::Json(&String::from_utf8(data).unwrap()),
-        ).expect("could not write to lmdb");
+        lmdb.add("a", &Value::Json(&String::from_utf8(data).unwrap()))
+            .expect("could not write to lmdb");
     }
 }
