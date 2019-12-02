@@ -352,9 +352,9 @@ impl EavTestSuite {
         }
 
         eav_storage.add_eavi(&eav).expect("could not add eav");
-        let two_stores = vec![eav_storage.clone(), eav_storage.clone()];
+        let two_stores = vec![eav_storage.clone(), eav_storage];
         let mut expected = BTreeSet::new();
-        expected.insert(eav.clone());
+        expected.insert(eav);
         for eav_storage in two_stores.iter() {
             // some examples of constraints that should all return the eav
             for (e, a, v) in vec![
@@ -454,7 +454,7 @@ impl EavTestSuite {
         );
 
         // show one for the many results
-        for many in vec![many_one.clone(), many_two.clone(), many_three.clone()] {
+        for many in vec![many_one, many_two, many_three] {
             let mut expected_one = BTreeSet::new();
             let eav =
                 EntityAttributeValueIndex::new(&one.address(), &attribute.clone(), &many.address())
@@ -517,7 +517,7 @@ impl EavTestSuite {
             }
             //insert every range
             if s > 1 {
-                expected_all_range.insert(eavi.clone());
+                expected_all_range.insert(eavi);
             }
         });
 
@@ -595,10 +595,10 @@ impl EavTestSuite {
                 EntityAttributeValueIndex::new(&many_one.address(), attribute, &one.address())
                     .expect("could not create EAV");
             let eavi = eav_storage
-                .add_eavi(&eav.clone())
+                .add_eavi(&eav)
                 .expect("could not add eav")
                 .expect("Could not get eavi option");
-            expected.insert(eavi.clone());
+            expected.insert(eavi);
         });
 
         let query = EaviQuery::new(
@@ -691,7 +691,7 @@ impl EavTestSuite {
         );
 
         // show one for the many results
-        for many in vec![many_one.clone(), many_two.clone(), many_three.clone()] {
+        for many in vec![many_one, many_two, many_three] {
             let mut expected_one = BTreeSet::new();
             let eav =
                 EntityAttributeValueIndex::new(&many.address(), &attribute.clone(), &one.address())
@@ -778,7 +778,7 @@ impl EavTestSuite {
         });
 
         //get from the eavi, if tombstone is found return that as priority
-        let expected_attribute = Some(tombstone_attribute.clone());
+        let expected_attribute = Some(tombstone_attribute);
 
         //this assert is supposed to return RemovedLink::("c","c") as since we have set it in our tombstone it should take precedence over everything
         assert_eq!(

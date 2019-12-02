@@ -59,7 +59,6 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
     {
         let iter2 = iter.clone();
         let filtered = iter
-            .clone()
             .filter(|eavi| EaviQuery::eav_check(&eavi, &self.entity, &self.attribute, &self.value));
 
         match self.index {

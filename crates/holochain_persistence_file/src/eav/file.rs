@@ -145,7 +145,7 @@ where
                         })
                         .unwrap_or_default()
                 })
-                .map(|pathbuf| read_eav(pathbuf.clone()));
+                .map(|pathbuf| read_eav(pathbuf));
             if !errors.is_empty() {
                 Err(JsonError::ErrorGeneric(
                     "Could not read eavs from directory".to_string(),
@@ -207,12 +207,11 @@ where
 
         let entity_set = self.read_from_dir::<Entity>(ENTITY_DIR.to_string(), query.entity())?;
         let attribute_set = self
-            .read_from_dir::<A>(ATTRIBUTE_DIR.to_string(), query.attribute())
-            .clone()?;
+            .read_from_dir::<A>(ATTRIBUTE_DIR.to_string(), query.attribute())?;
         let value_set = self.read_from_dir::<Value>(VALUE_DIR.to_string(), query.value())?;
 
         let attribute_value_inter: BTreeSet<String> = value_set
-            .intersection(&attribute_set.clone())
+            .intersection(&attribute_set)
             .cloned()
             .collect();
         let entity_attribute_value_inter: BTreeSet<String> = attribute_value_inter
@@ -222,7 +221,6 @@ where
 
         //still a O(n) structure because they are slipt in different places.
         let (eavis, errors): (BTreeSet<_>, BTreeSet<_>) = entity_attribute_value_inter
-            .clone()
             .into_iter()
             .map(|content| {
                 EntityAttributeValueIndex::try_from_content(&JsonString::from_json(&content))

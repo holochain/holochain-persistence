@@ -80,7 +80,7 @@ where
         inner
             .set(&*index_str, &new_eav)
             .map_err(|e| JsonError::ErrorGeneric(e.to_string()))?;
-        Ok(Some(new_eav.clone()))
+        Ok(Some(new_eav))
     }
 
     fn fetch_eavi(

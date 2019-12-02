@@ -70,7 +70,7 @@ where
         let mut map = self.storage.write()?;
         let new_eav = increment_key_till_no_collision(eav.clone(), map.clone())?;
         map.insert(new_eav.clone());
-        Ok(Some(new_eav.clone()))
+        Ok(Some(new_eav))
     }
 
     fn fetch_eavi(
