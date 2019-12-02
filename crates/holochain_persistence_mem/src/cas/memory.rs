@@ -42,7 +42,7 @@ impl MemoryStorage {
 impl ContentAddressableStorage for MemoryStorage {
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let mut map = self.storage.write()?;
-        map.insert(content.address().clone(), content.content().clone());
+        map.insert(content.address(), content.content());
         Ok(())
     }
 
@@ -84,5 +84,4 @@ pub mod tests {
             RawString::from("bar").into(),
         );
     }
-
 }

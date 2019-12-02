@@ -207,5 +207,4 @@ pub mod tests {
             OtherExampleAddressableContent,
         >(JsonString::from(RawString::from("foo")));
     }
-
 }

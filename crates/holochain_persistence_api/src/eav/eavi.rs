@@ -300,7 +300,7 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
     eav_storage.add_eavi(&eav).expect("could not add eav");
 
     let mut expected = BTreeSet::new();
-    expected.insert(eav.clone());
+    expected.insert(eav);
     // some examples of constraints that should all return the eav
     for (e, a, v) in vec![
         // constrain all
@@ -318,11 +318,7 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
             Some(value_content.address()),
         ),
         // open value
-        (
-            Some(entity_content.address()),
-            Some(attribute.clone()),
-            None,
-        ),
+        (Some(entity_content.address()), Some(attribute), None),
         // open
         (None, None, None),
     ] {
@@ -460,5 +456,4 @@ pub mod tests {
         )
         .is_ok());
     }
-
 }
