@@ -115,5 +115,4 @@ pub mod tests {
             RawString::from("bar").into(),
         );
     }
-
 }
