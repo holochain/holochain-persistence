@@ -206,14 +206,12 @@ where
         let _guard = self.lock.read()?;
 
         let entity_set = self.read_from_dir::<Entity>(ENTITY_DIR.to_string(), query.entity())?;
-        let attribute_set = self
-            .read_from_dir::<A>(ATTRIBUTE_DIR.to_string(), query.attribute())?;
+        let attribute_set =
+            self.read_from_dir::<A>(ATTRIBUTE_DIR.to_string(), query.attribute())?;
         let value_set = self.read_from_dir::<Value>(VALUE_DIR.to_string(), query.value())?;
 
-        let attribute_value_inter: BTreeSet<String> = value_set
-            .intersection(&attribute_set)
-            .cloned()
-            .collect();
+        let attribute_value_inter: BTreeSet<String> =
+            value_set.intersection(&attribute_set).cloned().collect();
         let entity_attribute_value_inter: BTreeSet<String> = attribute_value_inter
             .intersection(&entity_set)
             .cloned()

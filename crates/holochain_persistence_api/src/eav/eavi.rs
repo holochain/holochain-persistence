@@ -318,11 +318,7 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
             Some(value_content.address()),
         ),
         // open value
-        (
-            Some(entity_content.address()),
-            Some(attribute),
-            None,
-        ),
+        (Some(entity_content.address()), Some(attribute), None),
         // open
         (None, None, None),
     ] {
