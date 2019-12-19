@@ -102,12 +102,14 @@ mod tests {
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
         cas::{
-            content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
+            content::{Content, ExampleAddressableContent, OtherExampleAddressableContent, AddressableContent},
             storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };
     use tempfile::{tempdir, TempDir};
+    use std::thread;
+    use std::time::Duration;
 
     pub fn test_lmdb_cas() -> (LmdbStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
@@ -150,5 +152,37 @@ mod tests {
         cas.add(&Content::from_json("more bytes"))
             .expect("could not add to CAS");
         assert_eq!(cas.get_storage_report().unwrap(), StorageReport::new(0 + 0),);
+    }
+
+    #[test]
+    fn ensure_readers_are_freed() {
+        // the default is MAX_READERS = 126 so we want to check we can spin up that 
+        // many reads to ensure they are being freed
+        const MAX_READERS: u32 = 127;
+
+        let (mut cas, _) = test_lmdb_cas();
+        // add some content
+        let content = Content::from_json("some bytes");
+        cas.add(&content)
+            .expect("could not add to CAS");
+
+        let mut thread_handles = Vec::new();
+
+        for _ in 0..MAX_READERS {
+            let addr = content.address().clone();
+            let cas = cas.clone();
+            let h = thread::spawn(move || {
+                // some work here
+                cas.fetch(&addr).expect("Could not read from CAS");
+                thread::sleep(Duration::from_millis(1000)); // keep the reader from being dropped
+            });
+            thread_handles.push(h)
+        }
+
+        for h in thread_handles {
+            h.join().expect("Thread panicked");
+        }
+
+        assert_eq!(0,0)
     }
 }
