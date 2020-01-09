@@ -13,7 +13,7 @@ const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
 #[derive(Clone)]
 pub(crate) struct LmdbInstance {
     pub store: SingleStore,
-    pub manager: Arc<RwLock<Rkv>>,
+    pub rkv: Arc<RwLock<Rkv>>,
 }
 
 impl LmdbInstance {
@@ -25,7 +25,7 @@ impl LmdbInstance {
         let db_path = path.as_ref().join(db_name).with_extension("db");
         std::fs::create_dir_all(db_path.clone()).expect("Could not create file path for store");
 
-        let manager = Manager::singleton()
+        let rkv = Manager::singleton()
             .write()
             .unwrap()
             .get_or_create(db_path.as_path(), |path: &Path| {
@@ -35,14 +35,14 @@ impl LmdbInstance {
                     .set_map_size(initial_map_bytes.unwrap_or(DEFAULT_INITIAL_MAP_BYTES))
                     // max number of DBs in this environment
                     .set_max_dbs(1)
-                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                    // These flags make writes waaaaay faster by async writing to disk rather than blocking
                     // There is some loss of data integrity guarantees that comes with this
                     .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
                 Rkv::from_env(path, env_builder)
             })
             .expect("Could not create the environment");
 
-        let env = manager
+        let env = rkv
             .read()
             .expect("Could not get a read lock on the manager");
 
@@ -57,12 +57,12 @@ impl LmdbInstance {
 
         LmdbInstance {
             store: store,
-            manager: manager.clone(),
+            rkv: rkv.clone(),
         }
     }
 
     pub fn add<K: AsRef<[u8]> + Clone>(&self, key: K, value: &Value) -> Result<(), StoreError> {
-        let env = self.manager.read().unwrap();
+        let env = self.rkv.read().unwrap();
         let mut writer = env.write()?;
 
         match self
@@ -84,7 +84,7 @@ impl LmdbInstance {
 
     #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {
-        self.manager.read().unwrap().info()
+        self.rkv.read().unwrap().info()
     }
 }
 

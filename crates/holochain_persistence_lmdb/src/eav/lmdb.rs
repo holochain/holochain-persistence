@@ -6,7 +6,6 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-// use kv::{Config, Manager, Store, Error as KvError};
 use crate::common::LmdbInstance;
 use rkv::{error::StoreError, Value};
 use std::{
@@ -72,7 +71,7 @@ where
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
+        let env = self.lmdb.rkv.read().unwrap();
         let reader = env.read()?;
 
         // use a clever key naming scheme to speed up exact match queries on the entity
@@ -96,7 +95,7 @@ where
         &self,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
+        let env = self.lmdb.rkv.read().unwrap();
         let reader = env.read()?;
 
         let entries = match &query.entity {

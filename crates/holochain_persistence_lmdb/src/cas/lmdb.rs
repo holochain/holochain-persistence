@@ -53,7 +53,7 @@ impl LmdbStorage {
     }
 
     fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
+        let env = self.lmdb.rkv.read().unwrap();
         let reader = env.read()?;
 
         match self.lmdb.store.get(&reader, address.clone()) {

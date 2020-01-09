@@ -28,6 +28,7 @@ pub mod error;
 pub mod fixture;
 pub mod hash;
 pub mod reporting;
+pub mod txn;
 
 #[macro_use]
 extern crate objekt;
