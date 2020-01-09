@@ -1,3 +1,4 @@
+use crate::common::LmdbInstance;
 use holochain_persistence_api::{
     cas::content::AddressableContent,
     eav::{
@@ -6,7 +7,6 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use crate::common::LmdbInstance;
 use rkv::{error::StoreError, Value};
 use std::{
     collections::BTreeSet,
