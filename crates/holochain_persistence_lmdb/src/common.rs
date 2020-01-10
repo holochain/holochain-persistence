@@ -1,5 +1,4 @@
-use holochain_logging::prelude::*;
-use lmdb::Error as LmdbError;
+use holochain_logging::prelude::*; use lmdb::Error as LmdbError;
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
 };
@@ -17,31 +16,48 @@ pub(crate) struct LmdbInstance {
 }
 
 impl LmdbInstance {
-    pub fn new<P: AsRef<Path> + Clone>(
+
+      pub fn new<P: AsRef<Path> + Clone>(
         db_name: &str,
         path: P,
-        initial_map_bytes: Option<usize>,
-    ) -> LmdbInstance {
+        initial_map_bytes: Option<usize>
+      ) -> LmbdInstance {
+          Self::new_all(&[db_name], path, initial_map_bytes).into_iter()
+              .next().map(|(_db_name, instance)| instance)
+              .expect("Expected exactly one database instance")
+      }
+
+      pub fn new_all<P: AsRef<Path> + Clone>(
+        db_names: &[&str],
+        path: P,
+        initial_map_bytes: Option<usize>
+      ) -> HashMap<String, LmdbInstance> {
         let db_path = path.as_ref().join(db_name).with_extension("db");
         std::fs::create_dir_all(db_path.clone()).expect("Could not create file path for store");
 
         let rkv = Manager::singleton()
             .write()
             .unwrap()
-            .get_or_create(db_path.as_path(), |path: &Path| {
+            .get_or_create(path.as_path(), |path: &Path| {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
                     .set_map_size(initial_map_bytes.unwrap_or(DEFAULT_INITIAL_MAP_BYTES))
                     // max number of DBs in this environment
-                    .set_max_dbs(1)
+                    .set_max_dbs(db_names.len())
                     // These flags make writes waaaaay faster by async writing to disk rather than blocking
                     // There is some loss of data integrity guarantees that comes with this
                     .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
                 Rkv::from_env(path, env_builder)
             })
-            .expect("Could not create the environment");
+            .expect("Could not create the environment"));
 
+        db_names.iter().map(|db_name|
+            (db_name, Self::create_database(db_name, rkv))).collect::<HashMap<_,_>>();
+     }
+
+    
+     fn create_database(db_name:&str, rkv: Arc<RwLock<Rkv>>) -> LmbdInstance {
         let env = rkv
             .read()
             .expect("Could not get a read lock on the manager");
@@ -61,25 +77,12 @@ impl LmdbInstance {
         }
     }
 
-    pub fn add<K: AsRef<[u8]> + Clone>(&self, key: K, value: &Value) -> Result<(), StoreError> {
-        let env = self.rkv.read().unwrap();
-        let mut writer = env.write()?;
+    pub fn add<'env, K: AsRef<[u8]> + Clone>(&self, writer: &mut Writer<'env>,
+        key: K, value: &Value) -> Result<(), StoreError> {
 
-        match self
+        self
             .store
             .put(&mut writer, key.clone(), value)
-            .and_then(|_| writer.commit())
-        {
-            Err(StoreError::LmdbError(LmdbError::MapFull)) => {
-                trace!("Insufficient space in MMAP, doubling and trying again");
-                let map_size = env.info()?.map_size();
-                env.set_map_size(map_size * 2)?;
-                self.add(key, value)
-            }
-            r => r, // preserve any other errors
-        }?;
-
-        Ok(())
     }
 
     #[allow(dead_code)]
@@ -87,6 +90,22 @@ impl LmdbInstance {
         self.rkv.read().unwrap().info()
     }
 }
+
+/* TODO how to deal with in transactional environment 
+fn handle_commit() {
+
+     .and_then(|_| writer.commit())
+        {
+            Err(StoreError::LmdbError(LmdbError::MapFull)) => {
+                trace!("Insufficient space in MMAP, doubling and trying again");
+                let map_size = env.info()?.map_size();
+                env.set_map_size(map_size * 2)?;
+                self.add(key, writer, value)
+            }
+            r => r, // preserve any other errors
+        }?;
+
+}*/
 
 #[cfg(test)]
 pub mod tests {

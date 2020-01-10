@@ -17,6 +17,7 @@ use std::{
     path::Path,
 };
 use uuid::Uuid;
+use holochain_persistence_api::txn::{WriterProvider, Writer, CasEavManager};
 
 const CAS_BUCKET: &str = "cas";
 
@@ -26,10 +27,22 @@ pub struct LmdbStorage {
     lmdb: LmdbInstance,
 }
 
+
 impl Debug for LmdbStorage {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("LmdbStorage").field("id", &self.id).finish()
     }
+}
+
+
+#[derive(Shrinkwrap)]
+pub struct LmdbWriter<'txn>(rkv::Writer<'txn>);
+
+
+
+impl<'txn, A:Attribute> WriterProvider for CasEavManager<LmbdbStorage, {
+    type Writer = LmdbWriter<'txn>;
+
 }
 
 impl LmdbStorage {
@@ -45,16 +58,14 @@ impl LmdbStorage {
 }
 
 impl LmdbStorage {
-    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {
+    fn lmdb_add<'env>(&mut self, writer: rkv::Writer<'env>, content: &dyn AddressableContent) -> Result<(), StoreError> {
         self.lmdb.add(
             content.address(),
             &Value::Json(&content.content().to_string()),
         )
     }
 
-    fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
-        let env = self.lmdb.rkv.read().unwrap();
-        let reader = env.read()?;
+    fn lmdb_fetch(&self, reader: rkv::Reader, address: &Address) -> Result<Option<Content>, StoreError> {
 
         match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {

@@ -30,6 +30,8 @@ rkv = "0.10.2"
 # To get access to lmdb error types which aren't exported by rkv
 lmdb-rkv = "0.12.3"
 holochain_logging = "0.0.4"
+shrinkwraprs = "=0.2.1"
+num_cpus = "=1.11.1"
 
 [dev-dependencies]
 tempfile = "=3.0.7"
