@@ -26,13 +26,11 @@ pub struct LmdbStorage {
     lmdb: LmdbInstance,
 }
 
-
 impl Debug for LmdbStorage {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("LmdbStorage").field("id", &self.id).finish()
     }
 }
-
 
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(
@@ -47,15 +45,22 @@ impl LmdbStorage {
 }
 
 impl LmdbStorage {
-    fn lmdb_add<'env>(&mut self, writer: rkv::Writer<'env>, content: &dyn AddressableContent) -> Result<(), StoreError> {
+    fn lmdb_add<'env>(
+        &mut self,
+        writer: rkv::Writer<'env>,
+        content: &dyn AddressableContent,
+    ) -> Result<(), StoreError> {
         self.lmdb.add(
             content.address(),
             &Value::Json(&content.content().to_string()),
         )
     }
 
-    fn lmdb_fetch(&self, reader: rkv::Reader, address: &Address) -> Result<Option<Content>, StoreError> {
-
+    fn lmdb_fetch(
+        &self,
+        reader: rkv::Reader,
+        address: &Address,
+    ) -> Result<Option<Content>, StoreError> {
         match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Json(s) => Ok(Some(JsonString::from_json(s))),

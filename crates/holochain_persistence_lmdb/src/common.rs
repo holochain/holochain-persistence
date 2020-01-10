@@ -1,13 +1,13 @@
-//use holochain_logging::prelude::*; 
+//use holochain_logging::prelude::*;
 //use lmdb::Error as LmdbError;
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
-    Writer
+    Writer,
 };
 use std::{
+    collections::HashMap,
     path::Path,
     sync::{Arc, RwLock},
-    collections::HashMap,
 };
 
 const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
@@ -19,22 +19,23 @@ pub(crate) struct LmdbInstance {
 }
 
 impl LmdbInstance {
-
-      pub fn new<P: AsRef<Path> + Clone>(
+    pub fn new<P: AsRef<Path> + Clone>(
         db_name: &str,
         path: P,
-        initial_map_bytes: Option<usize>
-      ) -> LmdbInstance {
-          Self::new_all(&[db_name], path, initial_map_bytes).into_iter()
-              .next().map(|(_db_name, instance)| instance)
-              .expect("Expected exactly one database instance")
-      }
+        initial_map_bytes: Option<usize>,
+    ) -> LmdbInstance {
+        Self::new_all(&[db_name], path, initial_map_bytes)
+            .into_iter()
+            .next()
+            .map(|(_db_name, instance)| instance)
+            .expect("Expected exactly one database instance")
+    }
 
-      pub fn new_all<P: AsRef<Path> + Clone>(
+    pub fn new_all<P: AsRef<Path> + Clone>(
         db_names: &[&str],
         path: P,
-        initial_map_bytes: Option<usize>
-      ) -> HashMap<String, LmdbInstance> {
+        initial_map_bytes: Option<usize>,
+    ) -> HashMap<String, LmdbInstance> {
         std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
 
         let rkv = Manager::singleton()
@@ -54,12 +55,13 @@ impl LmdbInstance {
             })
             .expect("Could not create the environment");
 
-        db_names.iter().map(|db_name|
-            (db_name.to_string(), Self::create_database(db_name, rkv))).collect::<HashMap<_,_>>()
-     }
+        db_names
+            .iter()
+            .map(|db_name| (db_name.to_string(), Self::create_database(db_name, rkv)))
+            .collect::<HashMap<_, _>>()
+    }
 
-    
-     fn create_database(db_name:&str, rkv: Arc<RwLock<Rkv>>) -> LmdbInstance {
+    fn create_database(db_name: &str, rkv: Arc<RwLock<Rkv>>) -> LmdbInstance {
         let env = rkv
             .read()
             .expect("Could not get a read lock on the manager");
@@ -79,12 +81,13 @@ impl LmdbInstance {
         }
     }
 
-    pub fn add<'env, K: AsRef<[u8]> + Clone>(&self, writer: &mut Writer<'env>,
-        key: K, value: &Value) -> Result<(), StoreError> {
-
-        self
-            .store
-            .put(&mut writer, key.clone(), value)
+    pub fn add<'env, K: AsRef<[u8]> + Clone>(
+        &self,
+        writer: &mut Writer<'env>,
+        key: K,
+        value: &Value,
+    ) -> Result<(), StoreError> {
+        self.store.put(&mut writer, key.clone(), value)
     }
 
     #[allow(dead_code)]
@@ -93,7 +96,7 @@ impl LmdbInstance {
     }
 }
 
-/* TODO how to deal with in transactional environment 
+/* TODO how to deal with in transactional environment
 fn handle_commit() {
 
      .and_then(|_| writer.commit())
