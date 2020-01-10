@@ -5,22 +5,20 @@ use crate::{
 };
 use std::sync::Arc;
 
-pub trait Writer {
+pub trait Writer: objekt::Clone {
     fn commit(&self) -> PersistenceResult<()>;
     fn abort(&self) -> PersistenceResult<()>;
 }
 
-pub struct AlwaysFailingWriter;
-
-impl Writer for AlwaysFailingWriter {
-    fn commit(&self) -> PersistenceResult<()> {
-        Err(PersistenceError::ErrorGeneric("unimplemented".to_string()))
-    }
-    fn abort(&self) -> PersistenceResult<()> {
-        Err(PersistenceError::ErrorGeneric("unimplemented".to_string()))
-    }
+clone_trait_object!(Writer);
+pub trait Cursor<A: Attribute>:
+    ContentAddressableStorage + EntityAttributeValueStorage<A> + Writer
+{
 }
 
+clone_trait_object!(<A:Attribute> Cursor<A>);
+
+#[derive(Clone)]
 pub struct NoopWriter;
 
 impl NoopWriter {
@@ -38,27 +36,26 @@ impl Writer for NoopWriter {
     }
 }
 
-pub trait WriterProvider {
-    type Writer: Writer;
-    fn create_writer(&self) -> Self::Writer;
-}
-
 pub trait CasEavManager<A: Attribute> {
-    type Writer: Writer;
-    type Cas: ContentAddressableStorage<Writer = Self::Writer>;
+    type Cas: ContentAddressableStorage;
     type Eav: EntityAttributeValueStorage<A>;
 
     fn cas(&self) -> Arc<Self::Cas>;
     fn eav(&self) -> Arc<Self::Eav>;
 }
 
+trait CursorProvider<A: Attribute> {
+    type Cursor: Cursor<A>;
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
+}
+
 pub struct DefaultCasEavManager<
     A: Attribute,
-    C: ContentAddressableStorage,
-    E: EntityAttributeValueStorage<A>,
+    CAS: ContentAddressableStorage,
+    EAV: EntityAttributeValueStorage<A>,
 > {
-    cas: Arc<C>,
-    eav: Arc<E>,
+    cas: Arc<CAS>,
+    eav: Arc<EAV>,
     phantom: std::marker::PhantomData<A>,
 }
 
@@ -74,16 +71,11 @@ impl<A: Attribute, C: ContentAddressableStorage, E: EntityAttributeValueStorage<
     }
 }
 
-impl<
-        W: Writer,
-        A: Attribute,
-        C: ContentAddressableStorage<Writer = W>,
-        E: EntityAttributeValueStorage<A>,
-    > CasEavManager<A> for DefaultCasEavManager<A, C, E>
+impl<A: Attribute, CAS: ContentAddressableStorage, EAV: EntityAttributeValueStorage<A>>
+    CasEavManager<A> for DefaultCasEavManager<A, CAS, EAV>
 {
-    type Writer = W;
-    type Cas = C;
-    type Eav = E;
+    type Cas = CAS;
+    type Eav = EAV;
 
     fn eav(&self) -> Arc<Self::Eav> {
         self.eav.clone()

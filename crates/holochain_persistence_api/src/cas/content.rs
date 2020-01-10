@@ -6,7 +6,6 @@
 use crate::{cas::storage::ContentAddressableStorage, hash::HashString};
 use holochain_json_api::{error::JsonError, json::*};
 
-use crate::txn::WriterProvider;
 use multihash::Hash;
 use std::fmt::{Debug, Write};
 
@@ -139,14 +138,11 @@ impl AddressableContentTestSuite {
         );
     }
 
-    pub fn addressable_content_round_trip<T, W, K>(contents: Vec<T>, mut cas: K, w: &W)
+    pub fn addressable_content_round_trip<T, K>(contents: Vec<T>, mut cas: K)
     where
         T: AddressableContent + PartialEq + Clone + Debug,
-        W: WriterProvider,
-        K: ContentAddressableStorage<Writer = W::Writer>,
+        K: ContentAddressableStorage,
     {
-        let writer = w.create_writer();
-
         contents.into_iter().for_each(|f| {
             let mut add_error_message = String::new();
             let mut fetch_error_message = String::new();
@@ -155,7 +151,7 @@ impl AddressableContentTestSuite {
             writeln!(&mut fetch_error_message, "Could not fetch {:?}", f.clone())
                 .expect("could not write");
 
-            cas.add(&writer, &f).expect(&add_error_message);
+            cas.add(&f).expect(&add_error_message);
             assert_eq!(
                 Some(f.clone()),
                 Some(

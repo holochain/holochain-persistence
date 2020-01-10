@@ -16,7 +16,6 @@ use crate::{
     },
     regex::Regex,
     reporting::ReportStorage,
-    txn::{NoopWriter, Writer, WriterProvider},
 };
 use objekt;
 use std::{
@@ -32,13 +31,8 @@ use uuid::Uuid;
 /// anything implementing AddressableContent can be added and fetched by address
 /// CAS is append only
 pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug + ReportStorage {
-    type Writer: Writer;
     /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
-    fn add(
-        &mut self,
-        writer: &Self::Writer,
-        content: &dyn AddressableContent,
-    ) -> PersistenceResult<()>;
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
     /// true if the Address is in the Store, false otherwise.
     /// may be more efficient than retrieve depending on the implementation.
     fn contains(&self, address: &Address) -> PersistenceResult<bool>;
@@ -51,10 +45,10 @@ pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug + Repor
     fn get_id(&self) -> Uuid;
 }
 
-clone_trait_object!(<W:Writer> ContentAddressableStorage<Writer=W>);
+clone_trait_object!(ContentAddressableStorage);
 
-impl<W: Writer> PartialEq for dyn ContentAddressableStorage<Writer = W> {
-    fn eq(&self, other: &dyn ContentAddressableStorage<Writer = W>) -> bool {
+impl PartialEq for dyn ContentAddressableStorage {
+    fn eq(&self, other: &dyn ContentAddressableStorage) -> bool {
         self.get_id() == other.get_id()
     }
 }
@@ -75,24 +69,12 @@ impl ExampleContentAddressableStorage {
     }
 }
 
-impl WriterProvider for ExampleContentAddressableStorage {
-    type Writer = NoopWriter;
-    fn create_writer(&self) -> NoopWriter {
-        NoopWriter::new()
-    }
-}
-
 pub fn test_content_addressable_storage() -> ExampleContentAddressableStorage {
     ExampleContentAddressableStorage::new().expect("could not build example cas")
 }
 
 impl ContentAddressableStorage for ExampleContentAddressableStorage {
-    type Writer = NoopWriter;
-    fn add(
-        &mut self,
-        _w: &Self::Writer,
-        content: &dyn AddressableContent,
-    ) -> PersistenceResult<()> {
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.content
             .write()
             .unwrap()
@@ -148,28 +130,23 @@ impl ExampleContentAddressableStorageContent {
 }
 
 // A struct for our test suite that infers a type of ContentAddressableStorage
-pub struct StorageTestSuite<W, T>
+pub struct StorageTestSuite<T>
 where
-    W: WriterProvider,
-    T: ContentAddressableStorage<Writer = W::Writer>,
+    T: ContentAddressableStorage,
 {
     pub cas: T,
     // it is important that every cloned copy of any CAS has a consistent view to data
     pub cas_clone: T,
-
-    pub writer_provider: W,
 }
 
-impl<W, T> StorageTestSuite<W, T>
+impl<T> StorageTestSuite<T>
 where
-    W: WriterProvider,
-    T: ContentAddressableStorage<Writer = W::Writer> + 'static + Clone,
+    T: ContentAddressableStorage + 'static + Clone,
 {
-    pub fn new(writer_provider: W, cas: T) -> StorageTestSuite<W, T> {
+    pub fn new(cas: T) -> StorageTestSuite<T> {
         StorageTestSuite {
             cas_clone: cas.clone(),
             cas,
-            writer_provider,
         }
     }
 
@@ -201,9 +178,8 @@ where
             assert_eq!(Ok(None), cas.fetch(&other_addressable_content.address()));
         }
 
-        let writer = self.writer_provider.create_writer();
         // round trip some AddressableContent through the ContentAddressableStorage
-        assert_eq!(Ok(()), self.cas.add(&writer, &content));
+        assert_eq!(Ok(()), self.cas.add(&content));
 
         for cas in both_cas.iter() {
             assert_eq!(Ok(true), cas.contains(&content.address()));
@@ -213,7 +189,7 @@ where
 
         // multiple types of AddressableContent can sit in a single ContentAddressableStorage
         // the safety of this is only as good as the hashing algorithm(s) used
-        assert_eq!(Ok(()), self.cas_clone.add(&writer, &other_content));
+        assert_eq!(Ok(()), self.cas_clone.add(&other_content));
 
         for cas in both_cas.iter() {
             assert_eq!(Ok(true), cas.contains(&content.address()));
@@ -843,33 +819,21 @@ impl CasBencher {
         ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
     }
 
-    pub fn bench_add<W: WriterProvider>(
-        b: &mut test::Bencher,
-        w: &W,
-        mut store: impl ContentAddressableStorage<Writer = W::Writer>,
-    ) -> PersistenceResult<()> {
-        let writer = w.create_writer();
-        b.iter(|| store.add(&writer, &CasBencher::random_addressable_content()));
-        writer.commit()
+    pub fn bench_add(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
+        b.iter(|| store.add(&CasBencher::random_addressable_content()))
     }
 
-    pub fn bench_fetch<W: WriterProvider>(
-        b: &mut test::Bencher,
-        w: &W,
-        mut store: impl ContentAddressableStorage<Writer = W::Writer>,
-    ) {
+    pub fn bench_fetch(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
         // add some values to make it realistic
-        let writer = w.create_writer();
         for _ in 0..100 {
             store
-                .add(&writer, &CasBencher::random_addressable_content())
+                .add(&CasBencher::random_addressable_content())
                 .unwrap();
         }
 
         let test_content = CasBencher::random_addressable_content();
-        store.add(&writer, &test_content).unwrap();
+        store.add(&test_content).unwrap();
 
-        writer.commit().unwrap();
         b.iter(|| store.fetch(&test_content.address()))
     }
 }
@@ -885,9 +849,7 @@ pub mod tests {
     /// show that content of different types can round trip through the same storage
     #[test]
     fn example_content_round_trip_test() {
-        let storage = test_content_addressable_storage();
-
-        let test_suite = StorageTestSuite::new(storage, storage);
+        let test_suite = StorageTestSuite::new(test_content_addressable_storage());
         test_suite.round_trip_test::<ExampleAddressableContent, OtherExampleAddressableContent>(
             JsonString::from(RawString::from("foo")),
             JsonString::from(RawString::from("bar")),
