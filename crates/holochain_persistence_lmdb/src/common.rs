@@ -1,10 +1,13 @@
-use holochain_logging::prelude::*; use lmdb::Error as LmdbError;
+//use holochain_logging::prelude::*; 
+//use lmdb::Error as LmdbError;
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
+    Writer
 };
 use std::{
     path::Path,
     sync::{Arc, RwLock},
+    collections::HashMap,
 };
 
 const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
@@ -21,7 +24,7 @@ impl LmdbInstance {
         db_name: &str,
         path: P,
         initial_map_bytes: Option<usize>
-      ) -> LmbdInstance {
+      ) -> LmdbInstance {
           Self::new_all(&[db_name], path, initial_map_bytes).into_iter()
               .next().map(|(_db_name, instance)| instance)
               .expect("Expected exactly one database instance")
@@ -32,32 +35,31 @@ impl LmdbInstance {
         path: P,
         initial_map_bytes: Option<usize>
       ) -> HashMap<String, LmdbInstance> {
-        let db_path = path.as_ref().join(db_name).with_extension("db");
-        std::fs::create_dir_all(db_path.clone()).expect("Could not create file path for store");
+        std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
 
         let rkv = Manager::singleton()
             .write()
             .unwrap()
-            .get_or_create(path.as_path(), |path: &Path| {
+            .get_or_create(path.as_ref(), |path: &Path| {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
                     .set_map_size(initial_map_bytes.unwrap_or(DEFAULT_INITIAL_MAP_BYTES))
                     // max number of DBs in this environment
-                    .set_max_dbs(db_names.len())
+                    .set_max_dbs(db_names.len() as u32)
                     // These flags make writes waaaaay faster by async writing to disk rather than blocking
                     // There is some loss of data integrity guarantees that comes with this
                     .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
                 Rkv::from_env(path, env_builder)
             })
-            .expect("Could not create the environment"));
+            .expect("Could not create the environment");
 
         db_names.iter().map(|db_name|
-            (db_name, Self::create_database(db_name, rkv))).collect::<HashMap<_,_>>();
+            (db_name.to_string(), Self::create_database(db_name, rkv))).collect::<HashMap<_,_>>()
      }
 
     
-     fn create_database(db_name:&str, rkv: Arc<RwLock<Rkv>>) -> LmbdInstance {
+     fn create_database(db_name:&str, rkv: Arc<RwLock<Rkv>>) -> LmdbInstance {
         let env = rkv
             .read()
             .expect("Could not get a read lock on the manager");

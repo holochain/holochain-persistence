@@ -17,7 +17,6 @@ use std::{
     path::Path,
 };
 use uuid::Uuid;
-use holochain_persistence_api::txn::{WriterProvider, Writer, CasEavManager};
 
 const CAS_BUCKET: &str = "cas";
 
@@ -34,16 +33,6 @@ impl Debug for LmdbStorage {
     }
 }
 
-
-#[derive(Shrinkwrap)]
-pub struct LmdbWriter<'txn>(rkv::Writer<'txn>);
-
-
-
-impl<'txn, A:Attribute> WriterProvider for CasEavManager<LmbdbStorage, {
-    type Writer = LmdbWriter<'txn>;
-
-}
 
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(
@@ -80,19 +69,28 @@ impl LmdbStorage {
 
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-        self.lmdb_add(content)
+        let rkv = self.rkv.write().unwrap();
+        let writer = rkv.write()?;
+
+        self.lmdb_add(&mut writer, content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }
 
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        self.fetch(address).map(|result| match result {
+        let rkv = self.rkv.read().unwrap();
+        let reader = rkv.read()?;
+
+        self.fetch(reader, address).map(|result| match result {
             Some(_) => true,
             None => false,
         })
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        self.lmdb_fetch(address)
+        let rkv = self.rkv.read().unwrap();
+        let reader = rkv.read()?;
+
+        self.lmdb_fetch(reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
     }
 
