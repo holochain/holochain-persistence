@@ -86,8 +86,12 @@ where
             key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
-        self.lmdb
-            .add(key, &Value::Json(&new_eav.content().to_string()))?;
+        let mut writer = env.write()?;
+        self.lmdb.add(
+            &mut writer,
+            key,
+            &Value::Json(&new_eav.content().to_string()),
+        )?;
         Ok(Some(eav.clone()))
     }
 

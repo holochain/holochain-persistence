@@ -10,7 +10,7 @@ use holochain_persistence_api::{
 };
 use rkv::{
     error::{DataError, StoreError},
-    Value,
+    Reader, Value, Writer,
 };
 use std::{
     fmt::{Debug, Error, Formatter},
@@ -46,21 +46,18 @@ impl LmdbStorage {
 
 impl LmdbStorage {
     fn lmdb_add<'env>(
-        &mut self,
-        writer: rkv::Writer<'env>,
+        &self,
+        mut writer: &mut rkv::Writer<'env>,
         content: &dyn AddressableContent,
     ) -> Result<(), StoreError> {
         self.lmdb.add(
+            &mut writer,
             content.address(),
             &Value::Json(&content.content().to_string()),
         )
     }
 
-    fn lmdb_fetch(
-        &self,
-        reader: rkv::Reader,
-        address: &Address,
-    ) -> Result<Option<Content>, StoreError> {
+    fn lmdb_fetch(&self, reader: Reader, address: &Address) -> Result<Option<Content>, StoreError> {
         match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Json(s) => Ok(Some(JsonString::from_json(s))),
@@ -74,26 +71,28 @@ impl LmdbStorage {
 
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-        let rkv = self.rkv.write().unwrap();
-        let writer = rkv.write()?;
+        let rkv = self.lmdb.rkv.write().unwrap();
+        let mut writer: Writer = rkv.write().unwrap(); // TODO Use ?
 
         self.lmdb_add(&mut writer, content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }
 
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        let rkv = self.rkv.read().unwrap();
-        let reader = rkv.read()?;
+        let rkv = self.lmdb.rkv.read().unwrap();
+        let reader: rkv::Reader = rkv.read().unwrap(); // TODO Use ?
 
-        self.fetch(reader, address).map(|result| match result {
-            Some(_) => true,
-            None => false,
-        })
+        self.lmdb_fetch(reader, address)
+            .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
+            .map(|result| match result {
+                Some(_) => true,
+                None => false,
+            })
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let rkv = self.rkv.read().unwrap();
-        let reader = rkv.read()?;
+        let rkv = self.lmdb.rkv.read().unwrap();
+        let reader = rkv.read().unwrap(); // TODO Use ?
 
         self.lmdb_fetch(reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))

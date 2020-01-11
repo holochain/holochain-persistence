@@ -57,7 +57,12 @@ impl LmdbInstance {
 
         db_names
             .iter()
-            .map(|db_name| (db_name.to_string(), Self::create_database(db_name, rkv)))
+            .map(|db_name| {
+                (
+                    db_name.to_string(),
+                    Self::create_database(db_name, rkv.clone()),
+                )
+            })
             .collect::<HashMap<_, _>>()
     }
 
@@ -83,7 +88,7 @@ impl LmdbInstance {
 
     pub fn add<'env, K: AsRef<[u8]> + Clone>(
         &self,
-        writer: &mut Writer<'env>,
+        mut writer: &mut Writer<'env>,
         key: K,
         value: &Value,
     ) -> Result<(), StoreError> {
