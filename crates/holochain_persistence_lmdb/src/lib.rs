@@ -9,6 +9,12 @@
 #[allow(unused_extern_crates)]
 extern crate test;
 
+#[macro_use] extern crate shrinkwraprs;
+
+
+pub mod error;
 pub mod cas;
 mod common;
 pub mod eav;
+pub mod txn;
+

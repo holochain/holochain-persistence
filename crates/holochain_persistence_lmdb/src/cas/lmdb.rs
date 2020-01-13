@@ -22,8 +22,8 @@ const CAS_BUCKET: &str = "cas";
 
 #[derive(Clone)]
 pub struct LmdbStorage {
-    id: Uuid,
-    lmdb: LmdbInstance,
+    pub id: Uuid,
+    pub lmdb: LmdbInstance,
 }
 
 impl Debug for LmdbStorage {
@@ -45,7 +45,7 @@ impl LmdbStorage {
 }
 
 impl LmdbStorage {
-    fn lmdb_add<'env>(
+    pub fn lmdb_add<'env>(
         &self,
         mut writer: &mut rkv::Writer<'env>,
         content: &dyn AddressableContent,
@@ -57,7 +57,7 @@ impl LmdbStorage {
         )
     }
 
-    fn lmdb_fetch(&self, reader: Reader, address: &Address) -> Result<Option<Content>, StoreError> {
+    pub fn lmdb_fetch(&self, reader: Reader, address: &Address) -> Result<Option<Content>, StoreError> {
         match self.lmdb.store.get(&reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Json(s) => Ok(Some(JsonString::from_json(s))),
