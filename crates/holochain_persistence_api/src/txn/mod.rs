@@ -36,7 +36,7 @@ impl Writer for NoopWriter {
     }
 }
 
-pub trait CasEavManager<A: Attribute> {
+pub trait PersistenceManager<A: Attribute> {
     type Cas: ContentAddressableStorage;
     type Eav: EntityAttributeValueStorage<A>;
     type CursorProvider: CursorProvider<A>;
@@ -50,7 +50,7 @@ pub trait CursorProvider<A: Attribute> {
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
 }
 
-pub struct DefaultCasEavManager<
+pub struct DefaultPersistenceManager<
     A: Attribute,
     CAS: ContentAddressableStorage,
     EAV: EntityAttributeValueStorage<A>,
@@ -67,7 +67,7 @@ impl<
         CAS: ContentAddressableStorage,
         EAV: EntityAttributeValueStorage<A>,
         CP: CursorProvider<A>,
-    > DefaultCasEavManager<A, CAS, EAV, CP>
+    > DefaultPersistenceManager<A, CAS, EAV, CP>
 {
     pub fn new(cas: CAS, eav: EAV, cursor_provider: CP) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl<
         CAS: ContentAddressableStorage,
         EAV: EntityAttributeValueStorage<A>,
         CP: CursorProvider<A>,
-    > CasEavManager<A> for DefaultCasEavManager<A, CAS, EAV, CP>
+    > PersistenceManager<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 {
     type Cas = CAS;
     type Eav = EAV;
