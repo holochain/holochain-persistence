@@ -214,7 +214,7 @@ pub fn new_manager<
     let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
     let db_names = vec![cas_db_name, eav_db_name];
 
-    let dbs = LmdbInstance::new_all(db_names.as_slice(), env_path.clone(), initial_map_bytes);
+    let dbs = LmdbInstance::new_all(db_names.as_slice(), env_path, initial_map_bytes);
 
     let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());
     let eav_db: EavLmdbStorage<A> =
@@ -227,5 +227,5 @@ pub fn new_manager<
         staging_initial_map_bytes,
     };
 
-    DefaultPersistenceManager::new(cas_db.clone(), eav_db.clone(), cursor_provider)
+    DefaultPersistenceManager::new(cas_db, eav_db, cursor_provider)
 }

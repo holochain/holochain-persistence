@@ -92,8 +92,8 @@ impl<
 {
     pub fn new(cas: CAS, eav: EAV, cursor_provider: CP) -> Self {
         Self {
-            cas: cas.clone(),
-            eav: eav.clone(),
+            cas: cas,
+            eav: eav,
             cursor_provider,
             phantom: PhantomData,
         }
