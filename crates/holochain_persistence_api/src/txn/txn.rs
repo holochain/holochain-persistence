@@ -206,7 +206,34 @@ impl<
             phantom: PhantomData,
         }
     }
+
 }
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > DefaultPersistenceManager<A, CAS, EAV, NonTransactionalCursor<A, CAS, EAV>>
+{
+    pub fn new_non_transactional(cas: CAS, eav: EAV) -> Self {
+
+        let cursor_provider = NonTransactionalCursor {
+            cas: cas.clone(),
+            eav: eav.clone(),
+            phantom: PhantomData
+        };
+
+        Self {
+            cas: cas,
+            eav: eav,
+            cursor_provider,
+            phantom: PhantomData,
+        }
+    }
+
+}
+
+
 
 impl<
         A: Attribute,
