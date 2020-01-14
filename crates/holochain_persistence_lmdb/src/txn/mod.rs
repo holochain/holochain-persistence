@@ -5,6 +5,7 @@ use holochain_persistence_api::{
     error::*,
     reporting::{ReportStorage, StorageReport},
 };
+use serde::de::DeserializeOwned;
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug)]
@@ -16,7 +17,9 @@ pub struct EnvCursor<A: Attribute> {
     phantom: std::marker::PhantomData<A>,
 }
 
-impl<A: Attribute> holochain_persistence_api::txn::Writer for EnvCursor<A> {
+impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
+    for EnvCursor<A>
+{
     fn commit(self) -> PersistenceResult<()> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
         let mut writer = env_lock.write().unwrap();
@@ -24,17 +27,23 @@ impl<A: Attribute> holochain_persistence_api::txn::Writer for EnvCursor<A> {
         let staging_env_lock = self.staging_cas_db.lmdb.rkv.read().unwrap();
         let staging_reader = staging_env_lock.read().unwrap();
 
-        let staged = self
+        let staged_cas_data = self
             .staging_cas_db
             .lmdb_iter(&staging_reader)
             .map_err(to_api_error)?;
 
-        for (_address, maybe_content) in staged {
+        for (_address, maybe_content) in staged_cas_data {
             maybe_content
                 .as_ref()
                 .map(|content| self.cas_db.lmdb_add(&mut writer, content))
                 .unwrap_or_else(|| Ok(()))
                 .map_err(to_api_error)?;
+        }
+
+        let staged_eav_data = self.staging_eav_db.fetch_eavi(&EaviQuery::default())?;
+
+        for eavi in staged_eav_data {
+            self.eav_db.add_eavi(&eavi)?;
         }
 
         writer.commit().map_err(to_api_error)
