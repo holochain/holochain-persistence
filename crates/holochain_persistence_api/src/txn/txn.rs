@@ -1,9 +1,6 @@
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{cas::storage::ContentAddressableStorage, eav::*, error::*};
-use std::{
-    marker::PhantomData,
-    sync::{Arc, RwLock},
-};
+use std::{marker::PhantomData, sync::Arc};
 
 /// Defines a transactional writer, typically implemented over a cursor.
 pub trait Writer {
@@ -66,38 +63,36 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     type Eav: EntityAttributeValueStorage<A>;
 
     /// Gets the CAS storage.
-    // TODO decide on locking strategy here. Maybe RwLock is not needed
-    fn cas(&self) -> Arc<RwLock<Self::Cas>>;
+    fn cas(&self) -> Self::Cas;
     /// Gets the EAV storage
-    // TODO decide on locking strategy here. Maybe RwLock is not needed
-    fn eav(&self) -> Arc<RwLock<Self::Eav>>;
+    fn eav(&self) -> Self::Eav;
 }
 
 /// Provides a simple, extensable version of a persistance manager. Intended
 /// to be specialized for a particular database implementation easily.
 pub struct DefaultPersistenceManager<
     A: Attribute,
-    CAS: ContentAddressableStorage,
-    EAV: EntityAttributeValueStorage<A>,
+    CAS: ContentAddressableStorage + Clone,
+    EAV: EntityAttributeValueStorage<A> + Clone,
     CP: CursorProvider<A>,
 > {
-    cas: Arc<RwLock<CAS>>,
-    eav: Arc<RwLock<EAV>>,
+    cas: CAS,
+    eav: EAV,
     cursor_provider: Arc<CP>,
     phantom: PhantomData<A>,
 }
 
 impl<
         A: Attribute,
-        CAS: ContentAddressableStorage,
-        EAV: EntityAttributeValueStorage<A>,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
         CP: CursorProvider<A>,
     > DefaultPersistenceManager<A, CAS, EAV, CP>
 {
     pub fn new(cas: CAS, eav: EAV, cursor_provider: CP) -> Self {
         Self {
-            cas: Arc::new(RwLock::new(cas)),
-            eav: Arc::new(RwLock::new(eav)),
+            cas: cas.clone(),
+            eav: eav.clone(),
             cursor_provider: Arc::new(cursor_provider),
             phantom: PhantomData,
         }
@@ -106,26 +101,26 @@ impl<
 
 impl<
         A: Attribute,
-        CAS: ContentAddressableStorage,
-        EAV: EntityAttributeValueStorage<A>,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
         CP: CursorProvider<A>,
     > PersistenceManager<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 {
     type Cas = CAS;
     type Eav = EAV;
-    fn eav(&self) -> Arc<RwLock<Self::Eav>> {
+    fn eav(&self) -> Self::Eav {
         self.eav.clone()
     }
 
-    fn cas(&self) -> Arc<RwLock<Self::Cas>> {
+    fn cas(&self) -> Self::Cas {
         self.cas.clone()
     }
 }
 
 impl<
         A: Attribute,
-        CAS: ContentAddressableStorage,
-        EAV: EntityAttributeValueStorage<A>,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
         CP: CursorProvider<A>,
     > CursorProvider<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 {
