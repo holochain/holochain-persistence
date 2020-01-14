@@ -1,6 +1,6 @@
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{cas::storage::ContentAddressableStorage, eav::*, error::*};
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 /// Defines a transactional writer, typically implemented over a cursor.
 pub trait Writer {
@@ -78,7 +78,7 @@ pub struct DefaultPersistenceManager<
 > {
     cas: CAS,
     eav: EAV,
-    cursor_provider: Arc<CP>,
+    cursor_provider: CP,
     phantom: PhantomData<A>,
 }
 
@@ -93,7 +93,7 @@ impl<
         Self {
             cas: cas.clone(),
             eav: eav.clone(),
-            cursor_provider: Arc::new(cursor_provider),
+            cursor_provider,
             phantom: PhantomData,
         }
     }
