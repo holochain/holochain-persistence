@@ -39,29 +39,6 @@ impl Writer for NoopWriter {
     }
 }
 
-/// A high level api which brings together a CAS, EAV, and
-/// Cursor over them both. A cursor may start transactions over both
-/// the stores or not, depending on implementation.
-pub trait PersistenceManager<A: Attribute> {
-    /// The type of Content Addressable Storage (CAS)
-    type Cas: ContentAddressableStorage;
-    /// The type of Entity Entity AttributeValue Storage (EAV)
-    type Eav: EntityAttributeValueStorage<A>;
-    /// The type of the cursor provider
-    type CursorProvider: CursorProvider<A>;
-
-    /// Gets the CAS storage.
-    // TODO decide on locking strategy here. Maybe RwLock is not needed
-    fn cas(&self) -> Arc<RwLock<Self::Cas>>;
-    /// Gets the EAV storage
-    // TODO decide on locking strategy here. Maybe RwLock is not needed
-    fn eav(&self) -> Arc<RwLock<Self::Eav>>;
-
-    /// Gets the cursor provider.
-    // TODO decide on locking strategy here. Maybe RwLock is needed
-    fn cursor_provider(&self) -> Arc<Self::CursorProvider>;
-}
-
 /// Creates cursors over both EAV and CAS instances. May acquire read or write
 /// resources to do so, depending on implementation.
 ///
@@ -77,6 +54,23 @@ pub trait CursorProvider<A: Attribute> {
     /// Creates a new cursor. Use carefully as one instance of a cursor may block another,
     /// especially when cursors are mutating the primary store.
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
+}
+
+/// A high level api which brings together a CAS, EAV, and
+/// Cursor over them both. A cursor may start transactions over both
+/// the stores or not, depending on implementation.
+pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
+    /// The type of Content Addressable Storage (CAS)
+    type Cas: ContentAddressableStorage;
+    /// The type of Entity Entity AttributeValue Storage (EAV)
+    type Eav: EntityAttributeValueStorage<A>;
+
+    /// Gets the CAS storage.
+    // TODO decide on locking strategy here. Maybe RwLock is not needed
+    fn cas(&self) -> Arc<RwLock<Self::Cas>>;
+    /// Gets the EAV storage
+    // TODO decide on locking strategy here. Maybe RwLock is not needed
+    fn eav(&self) -> Arc<RwLock<Self::Eav>>;
 }
 
 /// Provides a simple, extensable version of a persistance manager. Intended
@@ -119,8 +113,6 @@ impl<
 {
     type Cas = CAS;
     type Eav = EAV;
-    type CursorProvider = CP;
-
     fn eav(&self) -> Arc<RwLock<Self::Eav>> {
         self.eav.clone()
     }
@@ -128,8 +120,18 @@ impl<
     fn cas(&self) -> Arc<RwLock<Self::Cas>> {
         self.cas.clone()
     }
+}
 
-    fn cursor_provider(&self) -> Arc<Self::CursorProvider> {
-        self.cursor_provider.clone()
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage,
+        EAV: EntityAttributeValueStorage<A>,
+        CP: CursorProvider<A>,
+    > CursorProvider<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
+{
+    type Cursor = CP::Cursor;
+
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        self.cursor_provider.create_cursor()
     }
 }

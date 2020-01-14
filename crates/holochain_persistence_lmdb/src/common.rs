@@ -31,6 +31,8 @@ impl LmdbInstance {
             .expect("Expected exactly one database instance")
     }
 
+    /// Instantiates multiple lmdb instances for a set of `db_names` at `path` and initial map size
+    /// `initial_map_bytes`
     pub fn new_all<P: AsRef<Path> + Clone>(
         db_names: &[&str],
         path: P,
