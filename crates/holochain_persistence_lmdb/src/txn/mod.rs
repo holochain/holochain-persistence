@@ -17,7 +17,7 @@ pub struct EnvCursor<A: Attribute> {
 }
 
 impl<A: Attribute> holochain_persistence_api::txn::Writer for EnvCursor<A> {
-    fn commit(&mut self) -> PersistenceResult<()> {
+    fn commit(self) -> PersistenceResult<()> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
         let mut writer = env_lock.write().unwrap();
 

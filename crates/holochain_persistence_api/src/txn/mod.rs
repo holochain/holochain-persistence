@@ -9,7 +9,7 @@ use std::{
 pub trait Writer {
     /// Commits the transaction. Returns a `PersistenceError` if the
     /// transaction does not succeed.
-    fn commit(&mut self) -> PersistenceResult<()>;
+    fn commit(self) -> PersistenceResult<()>;
 }
 
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
@@ -18,37 +18,6 @@ pub trait Cursor<A: Attribute>:
     Writer + ContentAddressableStorage + EntityAttributeValueStorage<A>
 {
 }
-
-// TODO decide whether to embed or or compose traits
-/*
-    /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
-    /// append only storage.
-    fn add_eavi(
-        &mut self,
-        eav: &EntityAttributeValueIndex<A>,
-    ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>>;
-
-    /// Fetch the set of EntityAttributeValues that match constraints according to the latest hash version
-    /// - None = no constraint
-    /// - Some(Entity) = requires the given entity (e.g. all a/v pairs for the entity)
-    /// - Some(Attribute) = requires the given attribute (e.g. all links)
-    /// - Some(Value) = requires the given value (e.g. all entities referencing an Address)
-    fn fetch_eavi(
-        &mut self,
-        query: &EaviQuery<A>,
-    ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>>;
-
-    /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
-    /// true if the Address is in the Store, false otherwise.
-    /// may be more efficient than retrieve depending on the implementation.
-    fn contains(&mut self, address: &Address) -> PersistenceResult<bool>;
-    /// returns Some AddressableContent if it is in the Store, else None
-    /// AddressableContent::from_content() can be used to allow the compiler to infer the type
-    /// @see the fetch implementation for ExampleCas in the cas module tests
-    fn fetch(&mut self, address: &Address) -> PersistenceResult<Option<Content>>;
-}
-*/
 
 clone_trait_object!(<A:Attribute> Cursor<A>);
 
@@ -65,7 +34,7 @@ impl NoopWriter {
 }
 
 impl Writer for NoopWriter {
-    fn commit(&mut self) -> PersistenceResult<()> {
+    fn commit(self) -> PersistenceResult<()> {
         Ok(())
     }
 }
