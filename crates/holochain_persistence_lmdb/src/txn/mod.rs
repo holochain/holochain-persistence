@@ -18,7 +18,26 @@ pub struct EnvCursor<A: Attribute> {
 
 impl<A: Attribute> holochain_persistence_api::txn::Writer for EnvCursor<A> {
     fn commit(&mut self) -> PersistenceResult<()> {
-        unimplemented!();
+        let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
+        let mut writer = env_lock.write().unwrap();
+
+        let staging_env_lock = self.staging_cas_db.lmdb.rkv.read().unwrap();
+        let staging_reader = staging_env_lock.read().unwrap();
+
+        let staged = self
+            .staging_cas_db
+            .lmdb_iter(&staging_reader)
+            .map_err(to_api_error)?;
+
+        for (_address, maybe_content) in staged {
+            maybe_content
+                .as_ref()
+                .map(|content| self.cas_db.lmdb_add(&mut writer, content))
+                .unwrap_or_else(|| Ok(()))
+                .map_err(to_api_error)?;
+        }
+
+        writer.commit().map_err(to_api_error)
     }
 }
 

@@ -1,17 +1,15 @@
 use crate::common::LmdbInstance;
-use holochain_json_api::json::JsonString;
+//use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
         storage::ContentAddressableStorage,
     },
     error::{PersistenceError, PersistenceResult},
+    hash::HashString,
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{
-    error::{DataError, StoreError},
-    Reader, Value, Writer,
-};
+use rkv::{error::StoreError, Reader, Value, Writer};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -44,6 +42,37 @@ impl LmdbStorage {
     }
 }
 
+fn handle_cursor_result(
+    result: Result<Option<rkv::Value>, StoreError>,
+) -> Result<Option<Content>, StoreError> {
+    match result {
+        Ok(Some(Value::Json(s))) => Ok(Some(serde_json::from_str(&s).unwrap())),
+        Ok(None) => Ok(None),
+        Ok(Some(_v)) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
+    }
+}
+
+fn handle_cursor_tuple_result(
+    result: Result<(&[u8], Option<rkv::Value>), StoreError>,
+) -> Result<(Address, Option<Content>), StoreError> {
+    match result {
+        Ok((address, Some(Value::Json(s)))) => Ok((
+            HashString::from(address.to_vec()),
+            Some(serde_json::from_str(&s).unwrap()),
+        )),
+        Ok((address, None)) => Ok((HashString::from(address.to_vec()), None)),
+        Ok((_address, Some(_v))) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
+    }
+}
+
 impl LmdbStorage {
     pub fn lmdb_add<'env>(
         &self,
@@ -62,14 +91,19 @@ impl LmdbStorage {
         reader: &Reader,
         address: &Address,
     ) -> Result<Option<Content>, StoreError> {
-        match self.lmdb.store.get(reader, address.clone()) {
-            Ok(Some(value)) => match value {
-                Value::Json(s) => Ok(Some(JsonString::from_json(s))),
-                _ => Err(StoreError::DataError(DataError::Empty)),
-            },
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
-        }
+        let result = self.lmdb.store.get(reader, address.clone());
+        handle_cursor_result(result)
+    }
+
+    pub fn lmdb_iter(
+        &self,
+        reader: &Reader,
+    ) -> Result<Vec<(Address, Option<Content>)>, StoreError> {
+        self.lmdb
+            .store
+            .iter_start(reader)?
+            .map(handle_cursor_tuple_result)
+            .collect::<Result<Vec<(Address, Option<Content>)>, StoreError>>()
     }
 }
 
