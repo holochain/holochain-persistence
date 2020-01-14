@@ -30,9 +30,13 @@ impl<A: Attribute> EavLmdbStorage<A> {
         db_path: P,
         initial_map_bytes: Option<usize>,
     ) -> EavLmdbStorage<A> {
-        EavLmdbStorage {
+        Self::wrap(&LmdbInstance::new(EAV_BUCKET, db_path, initial_map_bytes))
+    }
+
+    pub fn wrap(lmdb: &LmdbInstance) -> Self {
+        Self {
             id: Uuid::new_v4(),
-            lmdb: LmdbInstance::new(EAV_BUCKET, db_path, initial_map_bytes),
+            lmdb: lmdb.clone(),
             attribute: PhantomData,
         }
     }

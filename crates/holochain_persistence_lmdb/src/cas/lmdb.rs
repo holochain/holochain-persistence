@@ -31,13 +31,14 @@ impl Debug for LmdbStorage {
 }
 
 impl LmdbStorage {
-    pub fn new<P: AsRef<Path> + Clone>(
-        db_path: P,
-        initial_map_bytes: Option<usize>,
-    ) -> LmdbStorage {
-        LmdbStorage {
+    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> Self {
+        Self::wrap(&LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes))
+    }
+
+    pub fn wrap(lmdb: &LmdbInstance) -> Self {
+        Self {
             id: Uuid::new_v4(),
-            lmdb: LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes),
+            lmdb: lmdb.clone(),
         }
     }
 }

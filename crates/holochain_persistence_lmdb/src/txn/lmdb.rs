@@ -4,9 +4,11 @@ use holochain_persistence_api::{
     eav::*,
     error::*,
     reporting::{ReportStorage, StorageReport},
+    txn::{Cursor, CursorProvider},
 };
 use serde::de::DeserializeOwned;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, path::PathBuf};
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct EnvCursor<A: Attribute> {
@@ -145,54 +147,55 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
-        let maybe_content = self.staging_eav_db.fetch_eavi(query)?;
+        let eavis = self.staging_eav_db.fetch_eavi(query)?;
 
-        if !maybe_content.is_empty() {
-            return Ok(maybe_content);
+        if !eavis.is_empty() {
+            return Ok(eavis);
         }
-        unimplemented!()
+
+        let eavis = self.eav_db.fetch_eavi(query)?;
+
+        for eavi in &eavis {
+            self.staging_cas_db.add(eavi)?;
+        }
+        Ok(eavis)
     }
 }
+
+impl<A: Attribute + DeserializeOwned> Cursor<A> for EnvCursor<A> {}
 
 #[derive(Clone)]
-pub struct EagerCursorProvider {
-    cas_db: LmdbInstance,
-    eav_db: LmdbInstance,
+pub struct LmdbCursorProvider<A: Attribute> {
+    cas_db: LmdbStorage,
+    eav_db: EavLmdbStorage<A>,
+    staging_path: PathBuf,
+    staging_initial_map_bytes: Option<usize>,
 }
-/*
-impl<'env, A:Attribute> CursorProvider<A> for EagerCursorProvider {
 
-    type Cursor = EnvCursor<'env>;
-    fn create_cursor(&'env self) -> Self::Cursor {
-        EnvCursor::new(self.cas_db.clone(), self.eav_db.clone())
+impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A> {
+    type Cursor = EnvCursor<A>;
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        let staging_cas_db_name = format!("STAGING_CAS_{}", Uuid::new_v4());
+        let staging_eav_db_name = format!("STAGING_EAV_{}", Uuid::new_v4());
+        let db_names = vec![staging_cas_db_name.as_str(), staging_eav_db_name.as_str()];
+
+        let staging_dbs = LmdbInstance::new_all(
+            db_names.as_slice(),
+            self.staging_path.clone(),
+            self.staging_initial_map_bytes,
+        );
+
+        let staging_cas_db = LmdbStorage::wrap(staging_dbs.get(&staging_cas_db_name).unwrap());
+        let staging_eav_db = EavLmdbStorage::wrap(staging_dbs.get(&staging_eav_db_name).unwrap());
+
+        Ok(EnvCursor::new(
+            self.cas_db.clone(),
+            self.eav_db.clone(),
+            staging_cas_db,
+            staging_eav_db,
+        ))
     }
 }
-*/
-/*
-impl<'env, A:Attribute> CursorProvider<A> for EagerCursorProvider {
-
-    type Cursor = EnvCursor<'env>;
-    fn create_cursor<'a>(&self) -> EnvCursor<'a> {
-        EnvCursor::new(self.cas_db.clone(), self.eav_db.clone())
-    }
-}
-*/
-
-/*
-pub struct LmdbCursorProvider {
-    primary_rkv: rkv::Rkv,
-    staging_env_path_prefix: Path,
-}
-
-impl<A:Attribute> CursorProvider for LmdbCursorProvider<A> {
-    type Cursor = EagerCursor<A>;
-
-    fn create_cursor(&self) -> LmdbCursor {
-        let Self {primary_rkv, staging_env_path_prefix } = Self;
-
-    }
-}
-*/
 
 /*
 pub fn new_manager<A:Attribute, P: AsRef<Path> + Clone>(
