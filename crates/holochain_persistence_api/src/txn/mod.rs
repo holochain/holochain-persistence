@@ -1,10 +1,5 @@
 /// Transactional trait extensions to the CAS and EAV persistence
-use crate::{
-    cas::storage::ContentAddressableStorage,
-    cas::content::*,
-    eav::*,
-    error::*,
-};
+use crate::{cas::content::*, cas::storage::ContentAddressableStorage, eav::*, error::*};
 use std::{
     collections::BTreeSet,
     marker::PhantomData,
@@ -23,8 +18,7 @@ pub trait Writer {
 
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
-pub trait Cursor<A: Attribute> : Writer
-{
+pub trait Cursor<A: Attribute>: Writer {
     /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
     /// append only storage.
     fn add_eavi(
@@ -51,8 +45,6 @@ pub trait Cursor<A: Attribute> : Writer
     /// AddressableContent::from_content() can be used to allow the compiler to infer the type
     /// @see the fetch implementation for ExampleCas in the cas module tests
     fn fetch(&mut self, address: &Address) -> PersistenceResult<Option<Content>>;
-
-
 }
 
 //clone_trait_object!(<A:Attribute> Cursor<A>);
@@ -116,7 +108,6 @@ pub trait CursorProvider<A: Attribute> {
     /// Creates a new cursor. Use carefully as one instance of a cursor may block another,
     /// especially when cursors are mutating the primary store.
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
-
 }
 
 /// Provides a simple, extensable version of a persistance manager. Intended

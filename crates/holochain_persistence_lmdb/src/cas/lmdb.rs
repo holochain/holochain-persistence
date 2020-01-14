@@ -57,7 +57,11 @@ impl LmdbStorage {
         )
     }
 
-    pub fn lmdb_fetch(&self, reader: &Reader, address: &Address) -> Result<Option<Content>, StoreError> {
+    pub fn lmdb_fetch(
+        &self,
+        reader: &Reader,
+        address: &Address,
+    ) -> Result<Option<Content>, StoreError> {
         match self.lmdb.store.get(reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Json(s) => Ok(Some(JsonString::from_json(s))),
