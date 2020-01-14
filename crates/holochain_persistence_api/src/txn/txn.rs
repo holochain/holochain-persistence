@@ -16,6 +16,7 @@ pub trait Cursor<A: Attribute>:
 {
 }
 
+// TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> Cursor<A>);
 
 /// A write that does nothing, for testing or for
