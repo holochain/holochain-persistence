@@ -215,6 +215,10 @@ impl<
         EAV: EntityAttributeValueStorage<A> + Clone,
     > DefaultPersistenceManager<A, CAS, EAV, NonTransactionalCursor<A, CAS, EAV>>
 {
+    /// Create a new persistence manager with no transactional support. Cursors essentially
+    /// behave as random accessors, much like if one uses the CAS or EAV directly.
+    ///
+    /// Useful for testing or implementations of databases which don't support transactions.
     pub fn new_non_transactional(cas: CAS, eav: EAV) -> Self {
 
         let cursor_provider = NonTransactionalCursor {
