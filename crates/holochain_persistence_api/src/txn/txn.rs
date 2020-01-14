@@ -1,6 +1,15 @@
 /// Transactional trait extensions to the CAS and EAV persistence
-use crate::{cas::storage::ContentAddressableStorage, eav::*, error::*};
-use std::marker::PhantomData;
+use crate::{
+    cas::{
+        content::{Address, AddressableContent, Content},
+        storage::ContentAddressableStorage,
+    },
+    eav::*,
+    error::*,
+    reporting::{ReportStorage, StorageReport},
+};
+use std::{collections::BTreeSet, marker::PhantomData};
+use uuid::Uuid;
 
 /// Defines a transactional writer, typically implemented over a cursor.
 pub trait Writer {
@@ -34,6 +43,105 @@ impl NoopWriter {
 impl Writer for NoopWriter {
     fn commit(self) -> PersistenceResult<()> {
         Ok(())
+    }
+}
+
+/// A default cursor that does not execute anything explicitly within transactions.
+#[derive(Clone, Debug)]
+pub struct NonTransactionalCursor<
+    A: Attribute,
+    CAS: ContentAddressableStorage,
+    EAV: EntityAttributeValueStorage<A>,
+> {
+    cas: CAS,
+    eav: EAV,
+    phantom: PhantomData<A>,
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > ContentAddressableStorage for NonTransactionalCursor<A, CAS, EAV>
+{
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+        self.cas.add(content)
+    }
+
+    fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
+        self.cas.fetch(address)
+    }
+
+    fn contains(&self, address: &Address) -> PersistenceResult<bool> {
+        self.cas.contains(address)
+    }
+
+    fn get_id(&self) -> Uuid {
+        self.cas.get_id()
+    }
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > EntityAttributeValueStorage<A> for NonTransactionalCursor<A, CAS, EAV>
+{
+    fn add_eavi(
+        &self,
+        eavi: &EntityAttributeValueIndex<A>,
+    ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
+        self.eav.add_eavi(eavi)
+    }
+
+    fn fetch_eavi(
+        &self,
+        query: &EaviQuery<A>,
+    ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
+        self.eav.fetch_eavi(query)
+    }
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > ReportStorage for NonTransactionalCursor<A, CAS, EAV>
+{
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
+        self.cas.get_storage_report()
+    }
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > Cursor<A> for NonTransactionalCursor<A, CAS, EAV>
+{
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > Writer for NonTransactionalCursor<A, CAS, EAV>
+{
+    fn commit(self) -> PersistenceResult<()> {
+        NoopWriter {}.commit()
+    }
+}
+
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > CursorProvider<A> for NonTransactionalCursor<A, CAS, EAV>
+{
+    type Cursor = Self;
+
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        Ok(self.clone())
     }
 }
 
