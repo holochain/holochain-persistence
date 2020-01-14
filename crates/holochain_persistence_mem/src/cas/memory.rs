@@ -40,7 +40,7 @@ impl MemoryStorage {
 }
 
 impl ContentAddressableStorage for MemoryStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let mut map = self.storage.write()?;
         map.insert(content.address(), content.content());
         Ok(())

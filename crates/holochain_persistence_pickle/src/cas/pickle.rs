@@ -57,7 +57,7 @@ impl PickleStorage {
 }
 
 impl ContentAddressableStorage for PickleStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let mut inner = self.db.write().unwrap();
 
         inner

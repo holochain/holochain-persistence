@@ -1,7 +1,6 @@
 /// Transactional trait extensions to the CAS and EAV persistence
-use crate::{cas::content::*, cas::storage::ContentAddressableStorage, eav::*, error::*};
+use crate::{cas::storage::ContentAddressableStorage, eav::*, error::*};
 use std::{
-    collections::BTreeSet,
     marker::PhantomData,
     sync::{Arc, RwLock},
 };
@@ -11,14 +10,17 @@ pub trait Writer {
     /// Commits the transaction. Returns a `PersistenceError` if the
     /// transaction does not succeed.
     fn commit(&mut self) -> PersistenceResult<()>;
-
-    /// Aborts the transaction explicitly. Otherwise, called upon `drop`.
-    fn abort(&mut self) -> PersistenceResult<()>;
 }
 
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
-pub trait Cursor<A: Attribute>: Writer {
+pub trait Cursor<A: Attribute>:
+    Writer + ContentAddressableStorage + EntityAttributeValueStorage<A>
+{
+}
+
+// TODO decide whether to embed or or compose traits
+/*
     /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
     /// append only storage.
     fn add_eavi(
@@ -46,8 +48,9 @@ pub trait Cursor<A: Attribute>: Writer {
     /// @see the fetch implementation for ExampleCas in the cas module tests
     fn fetch(&mut self, address: &Address) -> PersistenceResult<Option<Content>>;
 }
+*/
 
-//clone_trait_object!(<A:Attribute> Cursor<A>);
+clone_trait_object!(<A:Attribute> Cursor<A>);
 
 /// A write that does nothing, for testing or for
 /// impementations that don't require the commit and abort functions
@@ -63,9 +66,6 @@ impl NoopWriter {
 
 impl Writer for NoopWriter {
     fn commit(&mut self) -> PersistenceResult<()> {
-        Ok(())
-    }
-    fn abort(&mut self) -> PersistenceResult<()> {
         Ok(())
     }
 }

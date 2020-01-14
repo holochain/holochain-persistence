@@ -285,7 +285,7 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
         &value_content.address(),
     )
     .expect("Could not create EAV");
-    let mut eav_storage = ExampleEntityAttributeValueStorage::new();
+    let eav_storage = ExampleEntityAttributeValueStorage::new();
 
     assert_eq!(
         BTreeSet::new(),

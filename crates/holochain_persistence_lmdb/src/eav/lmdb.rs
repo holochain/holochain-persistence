@@ -68,7 +68,7 @@ where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
     pub fn add_lmdb_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
         let env = self.lmdb.rkv.read().unwrap();
@@ -140,7 +140,7 @@ where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         self.add_lmdb_eavi(eav)

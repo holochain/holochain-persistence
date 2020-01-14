@@ -45,7 +45,7 @@ where
     A: Send + Sync,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         let mut map = self.storage.write()?;

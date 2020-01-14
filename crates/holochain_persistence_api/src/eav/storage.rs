@@ -23,7 +23,7 @@ pub trait EntityAttributeValueStorage<A: Attribute>:
     /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
     /// append only storage.
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>>;
 
@@ -64,7 +64,7 @@ where
     A: std::marker::Send + std::marker::Sync,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         let mut map = self.storage.write()?;
@@ -116,7 +116,7 @@ impl EavBencher {
 
     pub fn bench_add(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         b.iter(|| {
             let eav = EntityAttributeValueIndex::new(
@@ -131,7 +131,7 @@ impl EavBencher {
 
     pub fn bench_fetch_all(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {
@@ -149,7 +149,7 @@ impl EavBencher {
 
     pub fn bench_fetch_exact(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {

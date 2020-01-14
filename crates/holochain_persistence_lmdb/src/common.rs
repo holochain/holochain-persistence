@@ -13,7 +13,7 @@ use std::{
 const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
 
 #[derive(Clone)]
-pub(crate) struct LmdbInstance {
+pub struct LmdbInstance {
     pub store: SingleStore,
     pub rkv: Arc<RwLock<Rkv>>,
 }

@@ -74,7 +74,7 @@ impl LmdbStorage {
 }
 
 impl ContentAddressableStorage for LmdbStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let rkv = self.lmdb.rkv.write().unwrap();
         let mut writer: Writer = rkv.write().unwrap(); // TODO Use ?
 

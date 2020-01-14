@@ -138,7 +138,7 @@ impl AddressableContentTestSuite {
         );
     }
 
-    pub fn addressable_content_round_trip<T, K>(contents: Vec<T>, mut cas: K)
+    pub fn addressable_content_round_trip<T, K>(contents: Vec<T>, cas: K)
     where
         T: AddressableContent + PartialEq + Clone + Debug,
         K: ContentAddressableStorage,

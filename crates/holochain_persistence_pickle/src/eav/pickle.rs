@@ -62,7 +62,7 @@ where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         let mut inner = self.db.write().unwrap();

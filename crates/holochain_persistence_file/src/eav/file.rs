@@ -171,7 +171,7 @@ where
         + Into<JsonString>,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         let _guard = self.lock.write()?;

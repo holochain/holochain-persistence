@@ -52,7 +52,7 @@ impl FilesystemStorage {
 }
 
 impl ContentAddressableStorage for FilesystemStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let _guard = self.lock.write()?;
         // @TODO be more efficient here
         // @see https://github.com/holochain/holochain-rust/issues/248
