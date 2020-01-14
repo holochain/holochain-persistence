@@ -67,7 +67,7 @@ impl<A: Attribute> EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
-    fn add_lmdb_eavi(
+    pub fn add_lmdb_eavi(
         &mut self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
@@ -95,7 +95,7 @@ where
         Ok(Some(eav.clone()))
     }
 
-    fn fetch_lmdb_eavi(
+    pub fn fetch_lmdb_eavi(
         &self,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {

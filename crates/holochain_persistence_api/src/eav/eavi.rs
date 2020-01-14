@@ -32,7 +32,7 @@ pub type Entity = Address;
 ///  This is the minimal bounds defined for any attribute type. Some storage implementations
 /// may require other traits.
 
-pub trait Attribute: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug {}
+pub trait Attribute: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send {}
 
 #[derive(PartialEq, Eq, PartialOrd, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson)]
 pub enum ExampleAttribute {

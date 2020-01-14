@@ -1,34 +1,61 @@
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{
     cas::storage::ContentAddressableStorage,
-    eav::{Attribute, EntityAttributeValueStorage},
+    cas::content::*,
+    eav::*,
     error::*,
 };
 use std::{
+    collections::BTreeSet,
     marker::PhantomData,
     sync::{Arc, RwLock},
 };
 
 /// Defines a transactional writer, typically implemented over a cursor.
-pub trait Writer: objekt::Clone {
+pub trait Writer {
     /// Commits the transaction. Returns a `PersistenceError` if the
     /// transaction does not succeed.
-    fn commit(&self) -> PersistenceResult<()>;
+    fn commit(&mut self) -> PersistenceResult<()>;
 
     /// Aborts the transaction explicitly. Otherwise, called upon `drop`.
-    fn abort(&self) -> PersistenceResult<()>;
+    fn abort(&mut self) -> PersistenceResult<()>;
 }
-
-clone_trait_object!(Writer);
 
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
-pub trait Cursor<A: Attribute>:
-    ContentAddressableStorage + EntityAttributeValueStorage<A> + Writer
+pub trait Cursor<A: Attribute> : Writer
 {
+    /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
+    /// append only storage.
+    fn add_eavi(
+        &mut self,
+        eav: &EntityAttributeValueIndex<A>,
+    ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>>;
+
+    /// Fetch the set of EntityAttributeValues that match constraints according to the latest hash version
+    /// - None = no constraint
+    /// - Some(Entity) = requires the given entity (e.g. all a/v pairs for the entity)
+    /// - Some(Attribute) = requires the given attribute (e.g. all links)
+    /// - Some(Value) = requires the given value (e.g. all entities referencing an Address)
+    fn fetch_eavi(
+        &mut self,
+        query: &EaviQuery<A>,
+    ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>>;
+
+    /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
+    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
+    /// true if the Address is in the Store, false otherwise.
+    /// may be more efficient than retrieve depending on the implementation.
+    fn contains(&mut self, address: &Address) -> PersistenceResult<bool>;
+    /// returns Some AddressableContent if it is in the Store, else None
+    /// AddressableContent::from_content() can be used to allow the compiler to infer the type
+    /// @see the fetch implementation for ExampleCas in the cas module tests
+    fn fetch(&mut self, address: &Address) -> PersistenceResult<Option<Content>>;
+
+
 }
 
-clone_trait_object!(<A:Attribute> Cursor<A>);
+//clone_trait_object!(<A:Attribute> Cursor<A>);
 
 /// A write that does nothing, for testing or for
 /// impementations that don't require the commit and abort functions
@@ -43,10 +70,10 @@ impl NoopWriter {
 }
 
 impl Writer for NoopWriter {
-    fn commit(&self) -> PersistenceResult<()> {
+    fn commit(&mut self) -> PersistenceResult<()> {
         Ok(())
     }
-    fn abort(&self) -> PersistenceResult<()> {
+    fn abort(&mut self) -> PersistenceResult<()> {
         Ok(())
     }
 }
@@ -89,6 +116,7 @@ pub trait CursorProvider<A: Attribute> {
     /// Creates a new cursor. Use carefully as one instance of a cursor may block another,
     /// especially when cursors are mutating the primary store.
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
+
 }
 
 /// Provides a simple, extensable version of a persistance manager. Intended

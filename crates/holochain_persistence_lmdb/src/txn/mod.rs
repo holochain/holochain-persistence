@@ -1,14 +1,15 @@
 use holochain_persistence_api::cas::{content::*, storage::*};
 use holochain_persistence_api::eav::*;
-//use holochain_persistence_api::txn::*;
+use holochain_persistence_api::txn::*;
 use holochain_persistence_api::error::*;
 use holochain_persistence_api::reporting::{ReportStorage, StorageReport};
 use crate::common::LmdbInstance;
 use crate::cas::lmdb::LmdbStorage;
-use uuid::Uuid;
+use crate::eav::lmdb::EavLmdbStorage;
 use lazycell::LazyCell;
 use rkv::{Reader, Rkv, Writer};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::collections::BTreeSet;
 
 // TODO experimental
 #[allow(dead_code)]
@@ -54,32 +55,31 @@ impl<'a> EnvLock<'a> {
 }
 
 
-#[allow(dead_code)]
-#[derive(Clone)]
 pub struct EagerEnvCursor<'env, A:Attribute> {
-    env_reader: Arc<Reader<'env>>,
-    env_lock: Arc<RwLockReadGuard<'env, Rkv>>,
-    staging_env_lock: Arc<RwLockReadGuard<'env, Rkv>>,
-    staging_env_reader: Arc<Reader<'env>>,
-    staging_env_writer: Arc<Writer<'env>>,
+    env_reader: Reader<'env>,
+    env_lock: RwLockReadGuard<'env, Rkv>,
+    staging_env_lock: RwLockReadGuard<'env, Rkv>,
+    staging_env_reader: Reader<'env>,
+    staging_env_writer: Writer<'env>,
     cas_db: LmdbStorage,
-    eav_db: LmdbStorage,
+    eav_db: EavLmdbStorage<A>,
     staging_cas_db: LmdbStorage,
-    staging_eav_db: LmdbStorage,
+    staging_eav_db: EavLmdbStorage<A>,
     phantom: std::marker::PhantomData<A>
 }
 
-unsafe impl<'env, A:Attribute> Sync for EagerEnvCursor<'env, A>  {}
-unsafe impl<'env, A:Attribute> Send for EagerEnvCursor<'env, A>  {}
+fn single_threaded_panic<T> () -> T {
+    panic!("Only one thread should be using a cursor")
+}
 
 impl<'env, A:Attribute> holochain_persistence_api::txn::Writer for EagerEnvCursor<'env, A> {
 
 
-    fn commit(&self) -> PersistenceResult<()> {
-        panic!("NYI")     
+    fn commit(&mut self) -> PersistenceResult<()> {
+        unimplemented!();
     }
 
-    fn abort(&self) -> PersistenceResult<()> {
+    fn abort(&mut self) -> PersistenceResult<()> {
         self.staging_env_writer.abort();
         self.staging_env_writer.abort();
         self.env_reader.abort(); 
@@ -108,14 +108,14 @@ impl<'env, A:Attribute> ReportStorage for EagerEnvCursor<'env, A> {
 
 impl<'env, A:Attribute> EagerEnvCursor<'env, A> {
 
-    pub fn new(cas_db : LmdbStorage, eav_db: LmdbStorage,
-        staging_cas_db: LmdbStorage, staging_eav_db: LmdbStorage) -> Self {
+    pub fn new(cas_db : LmdbStorage, eav_db: EavLmdbStorage<A>,
+        staging_cas_db: LmdbStorage, staging_eav_db: EavLmdbStorage<A>) -> Self {
   
-        let env_lock = Arc::new(cas_db.lmdb.rkv.read().unwrap());
-        let env_reader = Arc::new(env_lock.read().unwrap());
-        let staging_env_lock = Arc::new(cas_db.lmdb.rkv.read().unwrap());
-        let staging_env_reader = Arc::new(env_lock.read().unwrap());
-        let staging_env_writer = Arc::new(env_lock.write().unwrap());
+        let env_lock = cas_db.lmdb.rkv.read().unwrap();
+        let env_reader = env_lock.read().unwrap();
+        let staging_env_lock = cas_db.lmdb.rkv.read().unwrap();
+        let staging_env_reader = env_lock.read().unwrap();
+        let staging_env_writer = env_lock.write().unwrap();
          Self {
             env_reader,
             env_lock,
@@ -141,30 +141,55 @@ fn to_api_error(e:rkv::error::StoreError) -> PersistenceError {
     e
 }
 
-impl<'env, A:Attribute> ContentAddressableStorage for EagerEnvCursor<'env, A> {
+impl<'env, A:Attribute+serde::de::DeserializeOwned> Cursor<A> for EagerEnvCursor<'env, A> {
 
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-        self.staging_cas_db.lmdb_add(&mut self.staging_env_writer.clone(), content).
-            map_err(to_api_error)
-
-    }
-
-    fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        self.fetch(address).map(|result| result.is_some())
-    }
-
-    fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let mut result = self.staging_cas_db.lmdb_fetch(self.staging_env_reader.as_ref(), address);
-        
-        if result.map(|maybe_content| maybe_content.is_some()).unwrap_or_else(|_e| false) {
-            return result.map_err(to_api_error)
-        }
-        self.cas_db.lmdb_fetch(self.env_reader.as_ref(), address)
+        self.staging_cas_db.lmdb_add(&mut self.staging_env_writer, content)
             .map_err(to_api_error)
     }
 
-    fn get_id(&self) -> Uuid {
-        self.cas_db.id 
+    fn contains(&mut self, address: &Address) -> PersistenceResult<bool> {
+        self.fetch(address).map(|maybe_content| maybe_content.is_some())
+    }
+
+    fn fetch(&mut self, address: &Address) -> PersistenceResult<Option<Content>> {
+        let maybe_content = self.staging_cas_db
+            .lmdb_fetch(&self.staging_env_reader, address)
+            .map_err(to_api_error)?;
+       
+        if maybe_content.is_some() {
+            return Ok(maybe_content)
+        }
+
+        let maybe_content = self.cas_db.lmdb_fetch(&self.env_reader, address)
+            .map_err(to_api_error)?;
+
+        Ok(maybe_content.map(|content| {
+            self.staging_cas_db.add(&content);
+            content
+        }))
+
+    }
+
+    fn add_eavi(
+        &mut self,
+        eav: &EntityAttributeValueIndex<A>,
+    ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
+        self.staging_eav_db.add_lmdb_eavi(eav)
+            .map_err(to_api_error)
+    }
+
+    fn fetch_eavi(
+        &mut self,
+        query: &EaviQuery<A>,
+    ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
+        let maybe_content = self.staging_eav_db.fetch_lmdb_eavi(query)
+            .map_err(to_api_error)?;
+        
+        if !maybe_content.is_empty() {
+            return Ok(maybe_content)
+        }
+        unimplemented!()
     }
 
 }
