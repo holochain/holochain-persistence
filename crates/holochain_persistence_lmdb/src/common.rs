@@ -59,7 +59,7 @@ impl LmdbInstance {
             .iter()
             .map(|db_name| {
                 (
-                    db_name.to_string(),
+                    (*db_name).to_string(),
                     Self::create_database(db_name, rkv.clone()),
                 )
             })
@@ -92,7 +92,7 @@ impl LmdbInstance {
         key: K,
         value: &Value,
     ) -> Result<(), StoreError> {
-        self.store.put(&mut writer, key.clone(), value)
+        self.store.put(&mut writer, key, value)
     }
 
     #[allow(dead_code)]
@@ -100,22 +100,6 @@ impl LmdbInstance {
         self.rkv.read().unwrap().info()
     }
 }
-
-/* TODO how to deal with in transactional environment
-fn handle_commit() {
-
-     .and_then(|_| writer.commit())
-        {
-            Err(StoreError::LmdbError(LmdbError::MapFull)) => {
-                trace!("Insufficient space in MMAP, doubling and trying again");
-                let map_size = env.info()?.map_size();
-                env.set_map_size(map_size * 2)?;
-                self.add(key, writer, value)
-            }
-            r => r, // preserve any other errors
-        }?;
-
-}*/
 
 #[cfg(test)]
 pub mod tests {
