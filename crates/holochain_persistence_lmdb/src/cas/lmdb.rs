@@ -16,7 +16,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const CAS_BUCKET: &str = "cas";
+pub const CAS_BUCKET: &str = "cas";
 
 #[derive(Clone)]
 pub struct LmdbStorage {

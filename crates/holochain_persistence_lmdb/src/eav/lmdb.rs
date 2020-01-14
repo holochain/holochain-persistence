@@ -16,7 +16,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const EAV_BUCKET: &str = "EAV";
+pub const EAV_BUCKET: &str = "EAV";
 
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {

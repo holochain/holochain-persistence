@@ -4,10 +4,10 @@ use holochain_persistence_api::{
     eav::*,
     error::*,
     reporting::{ReportStorage, StorageReport},
-    txn::{Cursor, CursorProvider},
+    txn::{Cursor, CursorProvider, DefaultPersistenceManager},
 };
 use serde::de::DeserializeOwned;
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{collections::BTreeSet, path::{Path, PathBuf}};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -197,12 +197,33 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
     }
 }
 
-/*
-pub fn new_manager<A:Attribute, P: AsRef<Path> + Clone>(
-        db_name: P1,
-        eav_db_name: P2,
-        cas_initial_map_bytes: Option<usize>,
-        eav_initial_map_bytes: Option<usize>,
-) -> DefaultCasEavManager<A, LmbdbStorage, LmdbEntityAttributeValueStorage<A>> {
-    unimplemented!()
-*/
+
+pub fn new_manager<A:Attribute+DeserializeOwned, EP: AsRef<Path> + Clone, SP: AsRef<Path>+ Clone>(
+        env_path: EP,
+        staging_path: SP,
+        initial_map_bytes: Option<usize>,
+        staging_initial_map_bytes: Option<usize>,
+) -> DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>> {
+
+    let cas_db_name = crate::cas::lmdb::CAS_BUCKET;
+    let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
+    let db_names = vec![cas_db_name, eav_db_name];
+
+    let dbs = LmdbInstance::new_all(
+        db_names.as_slice(),
+        env_path.clone(),
+        initial_map_bytes,
+    );
+
+    let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());
+    let eav_db : EavLmdbStorage<A> = EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap());
+
+   let cursor_provider = LmdbCursorProvider {
+           cas_db: cas_db.clone(),
+           eav_db: eav_db.clone(),
+           staging_path : staging_path.as_ref().to_path_buf(),
+           staging_initial_map_bytes
+    };
+
+   DefaultPersistenceManager::new(cas_db.clone(), eav_db.clone(), cursor_provider)
+}
