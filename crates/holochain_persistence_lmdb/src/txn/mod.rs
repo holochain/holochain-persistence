@@ -10,7 +10,7 @@ use lazycell::LazyCell;
 use rkv::{Reader, Rkv, Writer};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-
+// TODO experimental
 #[allow(dead_code)]
 #[derive(Clone)]
 enum EnvLock<'a> {
@@ -20,6 +20,7 @@ enum EnvLock<'a> {
 
 #[allow(dead_code)]
 impl<'a> EnvLock<'a> {
+    /*
     pub fn new(rkv: Arc<RwLock<Rkv>>) -> EnvLock<'a> {
         Self::Read(Arc::new(rkv.read().unwrap()), rkv)
     }
@@ -49,7 +50,7 @@ impl<'a> EnvLock<'a> {
             Self::Read(_read, _rkv) => self.promote().write(),
             Self::Write(write, _) => write.clone()
         }
-    }
+    }*/
 }
 
 
@@ -110,11 +111,11 @@ impl<'env, A:Attribute> EagerEnvCursor<'env, A> {
     pub fn new(cas_db : LmdbStorage, eav_db: LmdbStorage,
         staging_cas_db: LmdbStorage, staging_eav_db: LmdbStorage) -> Self {
   
-        let env_lock = cas_db.lmdb.rkv.read().unwrap();
-        let env_reader = env_lock.read().unwrap();
-        let staging_env_lock = cas_db.lmdb.rkv.read().unwrap();
-        let staging_env_reader = env_lock.read().unwrap();
-        let staging_env_writer = env_lock.write().unwrap();
+        let env_lock = Arc::new(cas_db.lmdb.rkv.read().unwrap());
+        let env_reader = Arc::new(env_lock.read().unwrap());
+        let staging_env_lock = Arc::new(cas_db.lmdb.rkv.read().unwrap());
+        let staging_env_reader = Arc::new(env_lock.read().unwrap());
+        let staging_env_writer = Arc::new(env_lock.write().unwrap());
          Self {
             env_reader,
             env_lock,
@@ -131,19 +132,37 @@ impl<'env, A:Attribute> EagerEnvCursor<'env, A> {
 
 }
 
+fn to_api_error(e:rkv::error::StoreError) -> PersistenceError {
+    // Convert to lmdb persistence error
+    let e: crate::error::PersistenceError = e.into();
+
+    // Convert into api persistence error
+    let e : PersistenceError = e.into();
+    e
+}
+
 impl<'env, A:Attribute> ContentAddressableStorage for EagerEnvCursor<'env, A> {
 
     fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.staging_cas_db.lmdb_add(&mut self.staging_env_writer.clone(), content).
-            map_err(|e| crate::error::PersistenceError(e))?
+            map_err(to_api_error)
+
     }
+
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-    
+        self.fetch(address).map(|result| result.is_some())
     }
+
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let result = self.staging_cas_db.lmdb_fetch(&self.staging_env_reader.clone(), address);
-         
+        let mut result = self.staging_cas_db.lmdb_fetch(self.staging_env_reader.as_ref(), address);
+        
+        if result.map(|maybe_content| maybe_content.is_some()).unwrap_or_else(|_e| false) {
+            return result.map_err(to_api_error)
+        }
+        self.cas_db.lmdb_fetch(self.env_reader.as_ref(), address)
+            .map_err(to_api_error)
     }
+
     fn get_id(&self) -> Uuid {
         self.cas_db.id 
     }
@@ -189,6 +208,7 @@ struct LazyEnvCursor<'env> {
 
 #[allow(dead_code)]
 impl<'env> LazyEnvCursor<'env> {
+    /*
     fn env_lock<'a>(&self) -> &'a EnvLock<'env> {
         let Self {
             env_lock, cas_db, ..
@@ -209,7 +229,7 @@ impl<'env> LazyEnvCursor<'env> {
             writer
         });
         writer
-    }
+    }*/
 }
 
 struct LmdbCursor<'prim_env, 'staging_env> {

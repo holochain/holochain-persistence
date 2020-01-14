@@ -57,8 +57,8 @@ impl LmdbStorage {
         )
     }
 
-    pub fn lmdb_fetch(&self, reader: Reader, address: &Address) -> Result<Option<Content>, StoreError> {
-        match self.lmdb.store.get(&reader, address.clone()) {
+    pub fn lmdb_fetch(&self, reader: &Reader, address: &Address) -> Result<Option<Content>, StoreError> {
+        match self.lmdb.store.get(reader, address.clone()) {
             Ok(Some(value)) => match value {
                 Value::Json(s) => Ok(Some(JsonString::from_json(s))),
                 _ => Err(StoreError::DataError(DataError::Empty)),
@@ -82,7 +82,7 @@ impl ContentAddressableStorage for LmdbStorage {
         let rkv = self.lmdb.rkv.read().unwrap();
         let reader: rkv::Reader = rkv.read().unwrap(); // TODO Use ?
 
-        self.lmdb_fetch(reader, address)
+        self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
             .map(|result| match result {
                 Some(_) => true,
@@ -94,7 +94,7 @@ impl ContentAddressableStorage for LmdbStorage {
         let rkv = self.lmdb.rkv.read().unwrap();
         let reader = rkv.read().unwrap(); // TODO Use ?
 
-        self.lmdb_fetch(reader, address)
+        self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
     }
 
