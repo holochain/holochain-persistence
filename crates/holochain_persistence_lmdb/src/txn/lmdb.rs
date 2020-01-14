@@ -17,10 +17,8 @@ pub struct EnvCursor<A: Attribute> {
     phantom: std::marker::PhantomData<A>,
 }
 
-impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
-    for EnvCursor<A>
-{
-    fn commit(self) -> PersistenceResult<()> {
+impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
+    fn commit_internal(&self) -> Result<bool, PersistenceError> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
         let mut writer = env_lock.write().unwrap();
 
@@ -45,8 +43,29 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
         for eavi in staged_eav_data {
             self.eav_db.add_eavi(&eavi)?;
         }
+        writer.commit().map(|()| Ok(true)).unwrap_or_else(|e| {
+            match e {
+                rkv::error::StoreError::LmdbError(lmdb::Error::MapFull) => {
+                    let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                    env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
+                    Ok(false)
+                }
+                r => Err(to_api_error(r)), // preserve any other errors
+            }
+        })
+    }
+}
 
-        writer.commit().map_err(to_api_error)
+impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
+    for EnvCursor<A>
+{
+    fn commit(self) -> PersistenceResult<()> {
+        loop {
+            let ret = self.commit_internal()?;
+            if ret {
+                return Ok(());
+            }
+        }
     }
 }
 
