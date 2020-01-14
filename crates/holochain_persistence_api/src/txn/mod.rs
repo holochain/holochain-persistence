@@ -13,7 +13,6 @@ pub trait Writer {
     fn commit(&mut self) -> PersistenceResult<()>;
 
     /// Aborts the transaction explicitly. Otherwise, called upon `drop`.
-    fn abort(&mut self) -> PersistenceResult<()>;
 }
 
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
