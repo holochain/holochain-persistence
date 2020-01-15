@@ -28,6 +28,9 @@ pub struct EnvCursor<A: Attribute> {
 }
 
 impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
+    /// Internal commit function which extracts `StoreError::MapFull` into the success value of
+    /// a result where `true` indicates the commit is successful, and `false` means the map was
+    /// full and retry is required with the newly allocated map size.
     fn commit_internal(&self) -> PersistenceResult<bool> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
         let mut writer = env_lock.write().unwrap();
@@ -52,11 +55,12 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
 
         for eavi in staged_eav_data {
             let result = self.eav_db.add_lmdb_eavi(&mut writer, &eavi);
-            if is_store_full_result(result) {
+            if is_store_full_result(&result) {
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
                 return Ok(false);
             }
+            result.map_err(to_api_error)?;
         }
 
         writer.commit().map(|()| Ok(true)).unwrap_or_else(|e| {

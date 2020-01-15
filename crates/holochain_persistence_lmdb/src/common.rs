@@ -108,7 +108,7 @@ impl LmdbInstance {
             let mut writer = env_lock.write()?;
             let result = self.add(&mut writer, key, value);
 
-            if is_store_full_result(result) {
+            if is_store_full_result(&result) {
                 drop(writer);
                 let map_size = env_lock.info()?.map_size();
                 env_lock.set_map_size(map_size * 2)?;

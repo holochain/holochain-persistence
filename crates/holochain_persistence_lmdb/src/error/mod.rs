@@ -24,8 +24,8 @@ pub fn to_api_error(e: StoreError) -> BaseError {
     e.into()
 }
 
-pub fn is_store_full_result<T>(result: Result<T, StoreError>) -> bool {
-    if let Err(e) = &result {
+pub fn is_store_full_result<T>(result: &Result<T, StoreError>) -> bool {
+    if let Err(e) = result {
         is_store_full_error(e)
     } else {
         false

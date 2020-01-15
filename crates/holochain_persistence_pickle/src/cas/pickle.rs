@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn pickle_report_storage_test() {
-        let (mut cas, _) = test_pickle_cas();
+        let (cas, _) = test_pickle_cas();
         // add some content
         cas.add(&Content::from_json("some bytes"))
             .expect("could not add to CAS");
