@@ -56,10 +56,7 @@ impl LmdbStorage {
         )
     }
 
-    pub fn lmdb_resizable_add<'env>(
-        &self,
-        content: &dyn AddressableContent,
-    ) -> Result<(), StoreError> {
+    pub fn lmdb_resizable_add(&self, content: &dyn AddressableContent) -> Result<(), StoreError> {
         self.lmdb.resizable_add(
             &content.address(),
             &Value::Json(&content.content().to_string()),
