@@ -24,7 +24,6 @@ pub struct EnvCursor<A: Attribute> {
     eav_db: EavLmdbStorage<A>,
     staging_cas_db: LmdbStorage,
     staging_eav_db: EavLmdbStorage<A>,
-    phantom: std::marker::PhantomData<A>,
 }
 impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
     fn commit_internal(&self) -> PersistenceResult<bool> {
@@ -101,7 +100,6 @@ impl<A: Attribute> EnvCursor<A> {
             eav_db,
             staging_cas_db,
             staging_eav_db,
-            phantom: std::marker::PhantomData,
         }
     }
 }
