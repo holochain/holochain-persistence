@@ -11,9 +11,11 @@ use holochain_persistence_api::{
     reporting::{ReportStorage, StorageReport},
     txn::{Cursor, CursorProvider, DefaultPersistenceManager},
 };
+use rkv::EnvironmentFlags;
 use serde::de::DeserializeOwned;
 use std::{
     collections::BTreeSet,
+    fs,
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -32,10 +34,10 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
     /// a result where `true` indicates the commit is successful, and `false` means the map was
     /// full and retry is required with the newly allocated map size.
     fn commit_internal(&self) -> PersistenceResult<bool> {
-        let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
+        let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
         let mut writer = env_lock.write().unwrap();
 
-        let staging_env_lock = self.staging_cas_db.lmdb.rkv.read().unwrap();
+        let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
         let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
 
         let staged_cas_data = self
@@ -180,27 +182,50 @@ impl<A: Attribute + DeserializeOwned> Cursor<A> for EnvCursor<A> {}
 
 #[derive(Clone)]
 pub struct LmdbCursorProvider<A: Attribute> {
+    /// Primary CAS lmdb store
     cas_db: LmdbStorage,
+
+    /// Primary EAV lmdb store, transactionally linked to the CAS
     eav_db: EavLmdbStorage<A>,
-    staging_path: PathBuf,
-    staging_initial_map_bytes: Option<usize>,
+
+    /// Path prefix to generate staging databases
+    staging_path_prefix: PathBuf,
+
+    /// Initial map size of staging databases
+    staging_initial_map_size: Option<usize>,
+
+    /// Environment flags for staging databases.
+    staging_env_flags: Option<EnvironmentFlags>,
 }
+
+/// Name of CAS staging database
+const STAGING_CAS_BUCKET: &str = "staging_cas";
+
+/// Name of EAV staging database
+const STAGING_EAV_BUCKET: &str = "staging_eav";
 
 impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A> {
     type Cursor = EnvCursor<A>;
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
-        let staging_cas_db_name = format!("STAGING_CAS_{}", Uuid::new_v4());
-        let staging_eav_db_name = format!("STAGING_EAV_{}", Uuid::new_v4());
-        let db_names = vec![staging_cas_db_name.as_str(), staging_eav_db_name.as_str()];
+        let db_names = vec![STAGING_CAS_BUCKET, STAGING_EAV_BUCKET];
 
+        let mut staging_path = self.staging_path_prefix.clone();
+        staging_path.push(format!("{}", Uuid::new_v4()));
+
+        // TODO do we need this if the environment flags are set correctly? That is, it should just
+        // be an in memory only database with no file system handles?
+        fs::create_dir_all(staging_path.as_path())?;
         let staging_dbs = LmdbInstance::new_all(
             db_names.as_slice(),
-            self.staging_path.clone(),
-            self.staging_initial_map_bytes,
+            staging_path,
+            self.staging_initial_map_size,
+            self.staging_env_flags,
         );
 
-        let staging_cas_db = LmdbStorage::wrap(staging_dbs.get(&staging_cas_db_name).unwrap());
-        let staging_eav_db = EavLmdbStorage::wrap(staging_dbs.get(&staging_eav_db_name).unwrap());
+        let staging_cas_db =
+            LmdbStorage::wrap(staging_dbs.get(&STAGING_CAS_BUCKET.to_string()).unwrap());
+        let staging_eav_db =
+            EavLmdbStorage::wrap(staging_dbs.get(&STAGING_EAV_BUCKET.to_string()).unwrap());
 
         Ok(EnvCursor::new(
             self.cas_db.clone(),
@@ -217,15 +242,17 @@ pub fn new_manager<
     SP: AsRef<Path> + Clone,
 >(
     env_path: EP,
-    staging_path: SP,
-    initial_map_bytes: Option<usize>,
-    staging_initial_map_bytes: Option<usize>,
+    staging_path_prefix: SP,
+    initial_map_size: Option<usize>,
+    env_flags: Option<EnvironmentFlags>,
+    staging_initial_map_size: Option<usize>,
+    staging_env_flags: Option<EnvironmentFlags>,
 ) -> DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>> {
     let cas_db_name = crate::cas::lmdb::CAS_BUCKET;
     let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
     let db_names = vec![cas_db_name, eav_db_name];
 
-    let dbs = LmdbInstance::new_all(db_names.as_slice(), env_path, initial_map_bytes);
+    let dbs = LmdbInstance::new_all(db_names.as_slice(), env_path, initial_map_size, env_flags);
 
     let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());
     let eav_db: EavLmdbStorage<A> =
@@ -234,8 +261,9 @@ pub fn new_manager<
     let cursor_provider = LmdbCursorProvider {
         cas_db: cas_db.clone(),
         eav_db: eav_db.clone(),
-        staging_path: staging_path.as_ref().to_path_buf(),
-        staging_initial_map_bytes,
+        staging_path_prefix: staging_path_prefix.as_ref().to_path_buf(),
+        staging_initial_map_size,
+        staging_env_flags,
     };
 
     DefaultPersistenceManager::new(cas_db, eav_db, cursor_provider)

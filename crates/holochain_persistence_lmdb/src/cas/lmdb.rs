@@ -1,7 +1,8 @@
 use crate::{
-    common::{handle_cursor_result_json_string, handle_cursor_tuple_result, LmdbInstance},
+    common::{handle_cursor_tuple_result, LmdbInstance},
     error::to_api_error,
 };
+use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
@@ -10,7 +11,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, Reader, Value};
+use rkv::{error::StoreError, EnvironmentFlags, Reader, Value};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -32,8 +33,17 @@ impl Debug for LmdbStorage {
 }
 
 impl LmdbStorage {
-    pub fn new<P: AsRef<Path> + Clone>(db_path: P, initial_map_bytes: Option<usize>) -> Self {
-        Self::wrap(&LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes))
+    pub fn new<P: AsRef<Path> + Clone>(
+        db_path: P,
+        initial_map_bytes: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+    ) -> Self {
+        Self::wrap(&LmdbInstance::new(
+            CAS_BUCKET,
+            db_path,
+            initial_map_bytes,
+            env_flags,
+        ))
     }
 
     pub fn wrap(lmdb: &LmdbInstance) -> Self {
@@ -43,6 +53,9 @@ impl LmdbStorage {
         }
     }
 }
+
+/// Interface for a single lmdb database. Meant for use by
+/// a CAS, EAV, and/or cursor implementation.
 impl LmdbStorage {
     pub fn lmdb_add<'env>(
         &self,
@@ -63,13 +76,27 @@ impl LmdbStorage {
         )
     }
 
+    fn handle_cursor_result_json_string(
+        result: Result<Option<rkv::Value>, StoreError>,
+    ) -> Result<Option<Content>, StoreError> {
+        match result {
+            Ok(Some(Value::Json(s))) => Ok(Some(JsonString::from_json(s))),
+            Ok(None) => Ok(None),
+            Ok(Some(_v)) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+                actual: rkv::value::Type::Json,
+                expected: rkv::value::Type::Json,
+            })),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn lmdb_fetch(
         &self,
         reader: &Reader,
         address: &Address,
     ) -> Result<Option<Content>, StoreError> {
-        let result = self.lmdb.store.get(reader, address.clone());
-        handle_cursor_result_json_string(result)
+        let result = self.lmdb.store().get(reader, address.clone());
+        Self::handle_cursor_result_json_string(result)
     }
 
     pub fn lmdb_iter(
@@ -77,7 +104,7 @@ impl LmdbStorage {
         reader: &Reader,
     ) -> Result<Vec<(Address, Option<Content>)>, StoreError> {
         self.lmdb
-            .store
+            .store()
             .iter_start(reader)?
             .map(handle_cursor_tuple_result)
             .collect::<Result<Vec<(Address, Option<Content>)>, StoreError>>()
@@ -91,7 +118,7 @@ impl ContentAddressableStorage for LmdbStorage {
     }
 
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        let rkv = self.lmdb.rkv.read().unwrap();
+        let rkv = self.lmdb.rkv().read().unwrap();
         let reader: rkv::Reader = rkv.read().map_err(to_api_error)?;
 
         self.lmdb_fetch(&reader, address)
@@ -103,7 +130,7 @@ impl ContentAddressableStorage for LmdbStorage {
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        let rkv = self.lmdb.rkv.read().unwrap();
+        let rkv = self.lmdb.rkv().read().unwrap();
         let reader = rkv.read().map_err(to_api_error)?;
 
         self.lmdb_fetch(&reader, address)
@@ -136,7 +163,7 @@ mod tests {
 
     pub fn test_lmdb_cas() -> (LmdbStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
-        (LmdbStorage::new(dir.path(), None), dir)
+        (LmdbStorage::new(dir.path(), None, None), dir)
     }
 
     #[bench]
