@@ -10,7 +10,7 @@ use holochain_persistence_api::{
     hash::HashString,
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, Reader, Value, Writer};
+use rkv::{error::StoreError, Reader, Value};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -88,6 +88,17 @@ impl LmdbStorage {
         )
     }
 
+    pub fn lmdb_resizable_add<'env>(
+        &self,
+        content: &dyn AddressableContent,
+    ) -> Result<(), StoreError> {
+        self.lmdb.resizable_add(
+            &content.address(),
+            &Value::Json(&content.content().to_string()),
+        )
+    }
+
+
     pub fn lmdb_fetch(
         &self,
         reader: &Reader,
@@ -111,10 +122,8 @@ impl LmdbStorage {
 
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-        let rkv = self.lmdb.rkv.write().unwrap();
-        let mut writer: Writer = rkv.write().map_err(to_api_error)?;
 
-        self.lmdb_add(&mut writer, content)
+        self.lmdb_resizable_add(content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }
 
@@ -193,7 +202,7 @@ mod tests {
 
     #[test]
     fn lmdb_report_storage_test() {
-        let (mut cas, _) = test_lmdb_cas();
+        let (cas, _) = test_lmdb_cas();
         // add some content
         cas.add(&Content::from_json("some bytes"))
             .expect("could not add to CAS");

@@ -4,6 +4,7 @@ use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
     Writer,
 };
+use crate::error::{is_store_full_error, is_store_full_result};
 use std::{
     collections::HashMap,
     path::Path,
@@ -97,6 +98,38 @@ impl LmdbInstance {
         self.store.put(&mut writer, key, value)
     }
 
+    pub fn resizable_add<K: AsRef<[u8]> + Clone>(
+        &self,
+        key: &K,
+        value: &Value,
+    ) -> Result<(), StoreError> {
+
+        loop {
+            let env_lock = self.rkv.write().unwrap();
+            let mut writer = env_lock.write()?;
+            let result = self.add(&mut writer, key, value);
+
+            if is_store_full_result(result) {
+                drop(writer);
+                let map_size = env_lock.info()?.map_size();
+                env_lock.set_map_size(map_size * 2)?;
+                continue;
+            }
+
+            let result = writer.commit();
+
+            if let Err(e) = &result {
+                if is_store_full_error(e) {
+                    let map_size = env_lock.info()?.map_size();
+                    env_lock.set_map_size(map_size * 2)?;
+                    continue
+                } 
+            }
+            return result
+        }
+    }
+
+
     #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {
         self.rkv.read().unwrap().info()
@@ -123,8 +156,8 @@ pub mod tests {
         // put data in there until the mmap size changes
         while lmdb.info().unwrap().map_size() == inititial_mmap_size {
             let content = CasBencher::random_addressable_content();
-            lmdb.add(
-                content.address(),
+            lmdb.resizable_add(
+                &content.address(),
                 &Value::Json(&content.content().to_string()),
             )
             .unwrap();
@@ -135,8 +168,8 @@ pub mod tests {
         // Do it again for good measure
         while lmdb.info().unwrap().map_size() == 2 * inititial_mmap_size {
             let content = CasBencher::random_addressable_content();
-            lmdb.add(
-                content.address(),
+            lmdb.resizable_add(
+                &content.address(),
                 &Value::Json(&content.content().to_string()),
             )
             .unwrap();
@@ -160,7 +193,7 @@ pub mod tests {
             .take(10 * inititial_mmap_size)
             .collect();
 
-        lmdb.add("a", &Value::Json(&String::from_utf8(data).unwrap()))
+        lmdb.resizable_add(&"a", &Value::Json(&String::from_utf8(data).unwrap()))
             .expect("could not write to lmdb");
     }
 }

@@ -7,7 +7,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, Value};
+use rkv::{error::StoreError, Writer, Value};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -71,8 +71,9 @@ impl<A: Attribute> EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
-    pub fn add_lmdb_eavi(
+    pub fn add_lmdb_eavi<'env>(
         &self,
+        mut writer: &mut Writer<'env>,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
         let env = self.lmdb.rkv.read().unwrap();
@@ -90,14 +91,44 @@ where
             key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
-        let mut writer = env.write()?;
+        drop(reader);
+        drop(env);
         self.lmdb.add(
             &mut writer,
-            key,
+            &key,
             &Value::Json(&new_eav.content().to_string()),
         )?;
         Ok(Some(eav.clone()))
     }
+
+    pub fn resizable_add_lmdb_eavi<'env>(
+        &self,
+        eav: &EntityAttributeValueIndex<A>,
+    ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
+        let env = self.lmdb.rkv.write().unwrap();
+        let reader = env.read()?;
+
+        // use a clever key naming scheme to speed up exact match queries on the entity
+        let mut new_eav = eav.clone();
+        let mut key = format!("{}::{}", new_eav.entity(), new_eav.index());
+
+        // need to check there isn't a duplicate key though and if there is create a new EAVI which
+        // will have a more recent timestamp
+        while let Ok(Some(_)) = self.lmdb.store.get(&reader, key.clone()) {
+            new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
+                .unwrap();
+            key = format!("{}::{}", new_eav.entity(), new_eav.index());
+        }
+
+        drop(reader);
+        drop(env);
+        self.lmdb.resizable_add(
+            &key,
+            &Value::Json(&new_eav.content().to_string()),
+        )?;
+        Ok(Some(eav.clone()))
+    }
+
 
     pub fn fetch_lmdb_eavi(
         &self,
@@ -143,11 +174,11 @@ impl<A: Attribute> EntityAttributeValueStorage<A> for EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
-    fn add_eavi(
+    fn add_eavi<'env>(
         &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-        self.add_lmdb_eavi(eav)
+        self.resizable_add_lmdb_eavi(eav)
             .map_err(|e| PersistenceError::from(format!("EAV add error: {}", e)))
     }
 

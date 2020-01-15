@@ -1,5 +1,5 @@
 use crate::{
-    cas::lmdb::LmdbStorage, common::LmdbInstance, eav::lmdb::EavLmdbStorage, error::to_api_error,
+    cas::lmdb::LmdbStorage, common::LmdbInstance, eav::lmdb::EavLmdbStorage, error::{is_store_full_error, to_api_error, is_store_full_result},
 };
 use holochain_persistence_api::{
     cas::{content::*, storage::*},
@@ -23,9 +23,8 @@ pub struct EnvCursor<A: Attribute> {
     staging_eav_db: EavLmdbStorage<A>,
     phantom: std::marker::PhantomData<A>,
 }
-
 impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
-    fn commit_internal(&self) -> Result<bool, PersistenceError> {
+    fn commit_internal(&self) -> PersistenceResult<bool> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
         let mut writer = env_lock.write().unwrap();
 
@@ -48,16 +47,21 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         let staged_eav_data = self.staging_eav_db.fetch_eavi(&EaviQuery::default())?;
 
         for eavi in staged_eav_data {
-            self.eav_db.add_eavi(&eavi)?;
+            let result = self.eav_db.add_lmdb_eavi(&mut writer, &eavi);
+            if is_store_full_result(result) {
+                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
+                return Ok(false)
+            }
         }
+
         writer.commit().map(|()| Ok(true)).unwrap_or_else(|e| {
-            match e {
-                rkv::error::StoreError::LmdbError(lmdb::Error::MapFull) => {
+            if is_store_full_error(&e) {
                     let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                     env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
                     Ok(false)
-                }
-                r => Err(to_api_error(r)), // preserve any other errors
+            } else {
+                Err(to_api_error(e))
             }
         })
     }
@@ -68,8 +72,8 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
 {
     fn commit(self) -> PersistenceResult<()> {
         loop {
-            let comitted = self.commit_internal()?;
-            if comitted {
+            let committed = self.commit_internal()?;
+            if committed {
                 return Ok(());
             }
         }
@@ -136,7 +140,7 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
         &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-        self.staging_eav_db.add_lmdb_eavi(eav).map_err(to_api_error)
+        self.staging_eav_db.resizable_add_lmdb_eavi(eav).map_err(to_api_error)
     }
 
     fn fetch_eavi(
