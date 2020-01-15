@@ -18,7 +18,7 @@ use std::{
 };
 use uuid::Uuid;
 
-/// A cursor over an lmdbn environment
+/// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct EnvCursor<A: Attribute> {
     cas_db: LmdbStorage,
