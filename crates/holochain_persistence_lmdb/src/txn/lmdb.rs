@@ -1,5 +1,8 @@
 use crate::{
-    cas::lmdb::LmdbStorage, common::LmdbInstance, eav::lmdb::EavLmdbStorage, error::{is_store_full_error, to_api_error, is_store_full_result},
+    cas::lmdb::LmdbStorage,
+    common::LmdbInstance,
+    eav::lmdb::EavLmdbStorage,
+    error::{is_store_full_error, is_store_full_result, to_api_error},
 };
 use holochain_persistence_api::{
     cas::{content::*, storage::*},
@@ -51,15 +54,15 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             if is_store_full_result(result) {
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
-                return Ok(false)
+                return Ok(false);
             }
         }
 
         writer.commit().map(|()| Ok(true)).unwrap_or_else(|e| {
             if is_store_full_error(&e) {
-                    let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                    env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
-                    Ok(false)
+                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
+                Ok(false)
             } else {
                 Err(to_api_error(e))
             }
@@ -140,7 +143,9 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
         &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
-        self.staging_eav_db.resizable_add_lmdb_eavi(eav).map_err(to_api_error)
+        self.staging_eav_db
+            .resizable_add_lmdb_eavi(eav)
+            .map_err(to_api_error)
     }
 
     fn fetch_eavi(

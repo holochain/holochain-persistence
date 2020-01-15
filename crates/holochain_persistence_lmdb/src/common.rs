@@ -1,10 +1,10 @@
 //use holochain_logging::prelude::*;
 //use lmdb::Error as LmdbError;
+use crate::error::{is_store_full_error, is_store_full_result};
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
     Writer,
 };
-use crate::error::{is_store_full_error, is_store_full_result};
 use std::{
     collections::HashMap,
     path::Path,
@@ -103,7 +103,6 @@ impl LmdbInstance {
         key: &K,
         value: &Value,
     ) -> Result<(), StoreError> {
-
         loop {
             let env_lock = self.rkv.write().unwrap();
             let mut writer = env_lock.write()?;
@@ -122,13 +121,12 @@ impl LmdbInstance {
                 if is_store_full_error(e) {
                     let map_size = env_lock.info()?.map_size();
                     env_lock.set_map_size(map_size * 2)?;
-                    continue
-                } 
+                    continue;
+                }
             }
-            return result
+            return result;
         }
     }
-
 
     #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {

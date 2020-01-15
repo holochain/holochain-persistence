@@ -7,7 +7,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, Writer, Value};
+use rkv::{error::StoreError, Value, Writer};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -122,13 +122,10 @@ where
 
         drop(reader);
         drop(env);
-        self.lmdb.resizable_add(
-            &key,
-            &Value::Json(&new_eav.content().to_string()),
-        )?;
+        self.lmdb
+            .resizable_add(&key, &Value::Json(&new_eav.content().to_string()))?;
         Ok(Some(eav.clone()))
     }
-
 
     pub fn fetch_lmdb_eavi(
         &self,

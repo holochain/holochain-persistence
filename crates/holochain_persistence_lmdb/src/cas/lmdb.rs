@@ -98,7 +98,6 @@ impl LmdbStorage {
         )
     }
 
-
     pub fn lmdb_fetch(
         &self,
         reader: &Reader,
@@ -122,7 +121,6 @@ impl LmdbStorage {
 
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-
         self.lmdb_resizable_add(content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }

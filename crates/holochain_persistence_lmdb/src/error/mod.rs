@@ -26,15 +26,15 @@ pub fn to_api_error(e: StoreError) -> BaseError {
 
 pub fn is_store_full_result<T>(result: Result<T, StoreError>) -> bool {
     if let Err(e) = &result {
-        is_store_full_error(e)   
+        is_store_full_error(e)
     } else {
-       false 
+        false
     }
 }
 
 pub fn is_store_full_error(e: &StoreError) -> bool {
     match e {
         rkv::error::StoreError::LmdbError(lmdb::Error::MapFull) => true,
-        _ => false
+        _ => false,
     }
 }
