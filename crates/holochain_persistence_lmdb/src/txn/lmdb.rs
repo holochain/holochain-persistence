@@ -8,7 +8,7 @@ use holochain_persistence_api::{
     cas::{content::*, storage::*},
     eav::*,
     error::*,
-    reporting::{ReportStorage},
+    reporting::{ReportStorage, StorageReport},
     txn::{Cursor, CursorProvider, DefaultPersistenceManager},
 };
 use serde::de::DeserializeOwned;
@@ -83,9 +83,9 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
 }
 
 impl<A: Attribute> ReportStorage for EnvCursor<A> {
-/*    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
-        Ok(StorageReport::new(0)) // TODO: implement this
-    }*/
+    fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
+        self.cas_db.get_storage_report()
+    }
 }
 
 impl<A: Attribute> EnvCursor<A> {
