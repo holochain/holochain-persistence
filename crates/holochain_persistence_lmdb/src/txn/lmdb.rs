@@ -68,8 +68,8 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
 {
     fn commit(self) -> PersistenceResult<()> {
         loop {
-            let ret = self.commit_internal()?;
-            if ret {
+            let comitted = self.commit_internal()?;
+            if comitted {
                 return Ok(());
             }
         }
