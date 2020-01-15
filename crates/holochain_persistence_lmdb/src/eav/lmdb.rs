@@ -101,7 +101,7 @@ where
         Ok(Some(eav.clone()))
     }
 
-    pub fn resizable_add_lmdb_eavi<'env>(
+    pub fn resizable_add_lmdb_eavi(
         &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
