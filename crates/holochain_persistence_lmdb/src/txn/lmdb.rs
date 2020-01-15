@@ -18,6 +18,7 @@ use std::{
 };
 use uuid::Uuid;
 
+/// A cursor over an lmdbn environment
 #[derive(Clone, Debug)]
 pub struct EnvCursor<A: Attribute> {
     cas_db: LmdbStorage,
@@ -25,6 +26,7 @@ pub struct EnvCursor<A: Attribute> {
     staging_cas_db: LmdbStorage,
     staging_eav_db: EavLmdbStorage<A>,
 }
+
 impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
     fn commit_internal(&self) -> PersistenceResult<bool> {
         let env_lock = self.cas_db.lmdb.rkv.write().unwrap();
