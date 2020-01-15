@@ -44,11 +44,16 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             .map_err(to_api_error)?;
 
         for (_address, maybe_content) in staged_cas_data {
-            maybe_content
+            let result = maybe_content
                 .as_ref()
                 .map(|content| self.cas_db.lmdb_add(&mut writer, content))
-                .unwrap_or_else(|| Ok(()))
-                .map_err(to_api_error)?;
+                .unwrap_or_else(|| Ok(()));
+            if is_store_full_result(&result) {
+                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
+                return Ok(false);
+            }
+            result.map_err(to_api_error)?;
         }
 
         let staged_eav_data = self.staging_eav_db.fetch_eavi(&EaviQuery::default())?;
