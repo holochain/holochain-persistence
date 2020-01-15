@@ -1,6 +1,11 @@
 //use holochain_logging::prelude::*;
 //use lmdb::Error as LmdbError;
 use crate::error::{is_store_full_error, is_store_full_result};
+use holochain_json_api::json::JsonString;
+use holochain_persistence_api::{
+    cas::content::{Address, Content},
+    hash::HashString,
+};
 use rkv::{
     DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
     Writer,
@@ -131,6 +136,37 @@ impl LmdbInstance {
     #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {
         self.rkv.read().unwrap().info()
+    }
+}
+
+pub fn handle_cursor_result_json_string(
+    result: Result<Option<rkv::Value>, StoreError>,
+) -> Result<Option<Content>, StoreError> {
+    match result {
+        Ok(Some(Value::Json(s))) => Ok(Some(JsonString::from_json(s))),
+        Ok(None) => Ok(None),
+        Ok(Some(_v)) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn handle_cursor_tuple_result(
+    result: Result<(&[u8], Option<rkv::Value>), StoreError>,
+) -> Result<(Address, Option<Content>), StoreError> {
+    match result {
+        Ok((address, Some(Value::Json(s)))) => Ok((
+            HashString::from(address.to_vec()),
+            Some(serde_json::from_str(&s).unwrap()),
+        )),
+        Ok((address, None)) => Ok((HashString::from(address.to_vec()), None)),
+        Ok((_address, Some(_v))) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
     }
 }
 
