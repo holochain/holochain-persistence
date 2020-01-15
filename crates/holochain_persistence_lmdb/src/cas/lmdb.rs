@@ -1,5 +1,6 @@
 use crate::common::LmdbInstance;
 //use holochain_json_api::json::JsonString;
+use crate::error::to_api_error;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
@@ -111,7 +112,7 @@ impl LmdbStorage {
 impl ContentAddressableStorage for LmdbStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let rkv = self.lmdb.rkv.write().unwrap();
-        let mut writer: Writer = rkv.write().unwrap(); // TODO Use ?
+        let mut writer: Writer = rkv.write().map_err(to_api_error)?;
 
         self.lmdb_add(&mut writer, content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
@@ -119,7 +120,7 @@ impl ContentAddressableStorage for LmdbStorage {
 
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         let rkv = self.lmdb.rkv.read().unwrap();
-        let reader: rkv::Reader = rkv.read().unwrap(); // TODO Use ?
+        let reader: rkv::Reader = rkv.read().map_err(to_api_error)?;
 
         self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
@@ -131,7 +132,7 @@ impl ContentAddressableStorage for LmdbStorage {
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
         let rkv = self.lmdb.rkv.read().unwrap();
-        let reader = rkv.read().unwrap(); // TODO Use ?
+        let reader = rkv.read().map_err(to_api_error)?;
 
         self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))

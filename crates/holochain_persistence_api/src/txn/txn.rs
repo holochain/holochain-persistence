@@ -206,7 +206,6 @@ impl<
             phantom: PhantomData,
         }
     }
-
 }
 
 impl<
@@ -220,11 +219,10 @@ impl<
     ///
     /// Useful for testing or implementations of databases which don't support transactions.
     pub fn new_non_transactional(cas: CAS, eav: EAV) -> Self {
-
         let cursor_provider = NonTransactionalCursor {
             cas: cas.clone(),
             eav: eav.clone(),
-            phantom: PhantomData
+            phantom: PhantomData,
         };
 
         Self {
@@ -234,10 +232,7 @@ impl<
             phantom: PhantomData,
         }
     }
-
 }
-
-
 
 impl<
         A: Attribute,

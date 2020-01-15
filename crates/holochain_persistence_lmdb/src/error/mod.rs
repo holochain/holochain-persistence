@@ -14,3 +14,11 @@ impl Into<BaseError> for PersistenceError {
         self.0
     }
 }
+
+pub fn to_api_error(e: rkv::error::StoreError) -> BaseError {
+    // Convert to lmdb persistence error
+    let e: crate::error::PersistenceError = e.into();
+
+    // Convert into api persistence error
+    e.into()
+}

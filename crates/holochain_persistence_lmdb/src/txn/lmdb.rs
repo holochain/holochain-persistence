@@ -1,4 +1,6 @@
-use crate::{cas::lmdb::LmdbStorage, common::LmdbInstance, eav::lmdb::EavLmdbStorage};
+use crate::{
+    cas::lmdb::LmdbStorage, common::LmdbInstance, eav::lmdb::EavLmdbStorage, error::to_api_error,
+};
 use holochain_persistence_api::{
     cas::{content::*, storage::*},
     eav::*,
@@ -28,7 +30,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         let mut writer = env_lock.write().unwrap();
 
         let staging_env_lock = self.staging_cas_db.lmdb.rkv.read().unwrap();
-        let staging_reader = staging_env_lock.read().unwrap();
+        let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
 
         let staged_cas_data = self
             .staging_cas_db
@@ -95,15 +97,6 @@ impl<A: Attribute> EnvCursor<A> {
             phantom: std::marker::PhantomData,
         }
     }
-}
-
-fn to_api_error(e: rkv::error::StoreError) -> PersistenceError {
-    // Convert to lmdb persistence error
-    let e: crate::error::PersistenceError = e.into();
-
-    // Convert into api persistence error
-    let e: PersistenceError = e.into();
-    e
 }
 
 impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
