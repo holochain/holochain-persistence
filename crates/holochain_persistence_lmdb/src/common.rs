@@ -127,7 +127,7 @@ impl LmdbInstance {
             if is_store_full_result(&result) {
                 drop(writer);
                 let map_size = env_lock.info()?.map_size();
-                env_lock.set_map_size(map_size * 2)?;
+                env_lock.set_map_size(map_size * map_growth_factor())?;
                 continue;
             }
 
@@ -136,7 +136,7 @@ impl LmdbInstance {
             if let Err(e) = &result {
                 if is_store_full_error(e) {
                     let map_size = env_lock.info()?.map_size();
-                    env_lock.set_map_size(map_size * 2)?;
+                    env_lock.set_map_size(map_size * map_growth_factor())?;
                     continue;
                 }
             }
@@ -175,6 +175,12 @@ pub fn handle_cursor_tuple_result(
     }
 }
 
+const MAP_GROWTH_FACTOR : usize = 8;
+
+pub fn map_growth_factor() -> usize {
+   MAP_GROWTH_FACTOR 
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -203,10 +209,10 @@ pub mod tests {
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * 2,);
+        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * map_growth_factor());
 
         // Do it again for good measure
-        while lmdb.info().unwrap().map_size() == 2 * inititial_mmap_size {
+        while lmdb.info().unwrap().map_size() == map_growth_factor() * inititial_mmap_size {
             let content = CasBencher::random_addressable_content();
             lmdb.resizable_add(
                 &content.address(),
@@ -215,7 +221,7 @@ pub mod tests {
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * 4,);
+        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * map_growth_factor() * map_growth_factor(),);
     }
 
     #[test]
