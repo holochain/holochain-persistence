@@ -320,7 +320,7 @@ where
         OtherAddressable: AddressableContent + Clone + PartialEq + Debug,
     {
         self.with_cursor("txn_cas_round_trip_test", |cursor| {
-            let cas_test_suite = StorageTestSuite::new(cursor.clone());
+            let cas_test_suite = StorageTestSuite::new(cursor);
             cas_test_suite.round_trip_test::<Addressable, OtherAddressable>(content, other_content);
         })
     }
