@@ -53,7 +53,7 @@ impl AddressableContent for Content {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, Deserialize)]
 /// some struct that can be content addressed
 /// imagine an Entry, ChainHeader, Meta Value, etc.
 pub struct ExampleAddressableContent {

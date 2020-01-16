@@ -1,3 +1,4 @@
+use holochain_logging::prelude::*;
 use crate::{
     cas::lmdb::LmdbStorage,
     common::LmdbInstance,
@@ -19,7 +20,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
-
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct EnvCursor<A: Attribute> {
@@ -34,12 +34,17 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
     /// a result where `true` indicates the commit is successful, and `false` means the map was
     /// full and retry is required with the newly allocated map size.
     fn commit_internal(&self) -> PersistenceResult<bool> {
+        trace!("writer: commit_internal start");
         let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
+        trace!("writer: commit_internal got env write lock");
         let mut writer = env_lock.write().unwrap();
-
+        trace!("writer: commit_internal got writer");
+ 
         let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
+        trace!("writer: commit_internal got staging env lock");
         let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
-
+        trace!("writer: commit_internal got staging reader");
+ 
         let staged_cas_data = self
             .staging_cas_db
             .lmdb_iter(&staging_reader)
@@ -51,6 +56,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
                 .map(|content| self.cas_db.lmdb_add(&mut writer, content))
                 .unwrap_or_else(|| Ok(()));
             if is_store_full_result(&result) {
+                trace!("writer: commit_internal store full while adding cas data");
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
                 return Ok(false);
@@ -58,11 +64,15 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             result.map_err(to_api_error)?;
         }
 
-        let staged_eav_data = self.staging_eav_db.fetch_eavi(&EaviQuery::default())?;
+        let staged_eav_data = self.staging_eav_db.fetch_lmdb_eavi(staging_reader, &EaviQuery::default())
+            .map_err(to_api_error)?;
 
+        let reader = env_lock.read().map_err(to_api_error)?;
         for eavi in staged_eav_data {
-            let result = self.eav_db.add_lmdb_eavi(&mut writer, &eavi);
+            let result = self.eav_db.add_lmdb_eavi(&reader, &mut writer, &eavi);
             if is_store_full_result(&result) {
+                trace!("writer: commit_internal store full while adding eavi data");
+                drop(writer);
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
                 return Ok(false);
@@ -70,12 +80,19 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             result.map_err(to_api_error)?;
         }
 
-        writer.commit().map(|()| Ok(true)).unwrap_or_else(|e| {
+        drop(staging_env_lock);
+        writer.commit().map(|()| {
+            trace!("writer: commit_internal success");
+            Ok(true)
+        }).unwrap_or_else(|e| {
+            trace!("writer: commit_internal error on commit");
             if is_store_full_error(&e) {
+                trace!("writer: commit_internal store full on commit");
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
                 Ok(false)
             } else {
+                trace!("writer: commit_internal generic error on commit");
                 Err(to_api_error(e))
             }
         })
@@ -284,12 +301,25 @@ pub fn new_manager<
 pub mod tests {
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
-        cas::content::{AddressableContent, ExampleAddressableContent},
+        cas::{storage::ExampleLink, content::{AddressableContent, ExampleAddressableContent}},
         eav::{Attribute, ExampleAttribute},
         txn::*,
     };
     use tempfile::tempdir;
-    //    use holochain_persistence_api::cas::storage::ExampleLink;
+
+    use super::LmdbManager;
+
+    fn enable_logging_for_test(enable: bool) {
+        if std::env::var("RUST_LOG").is_err() {
+            std::env::set_var("RUST_LOG", "trace");
+        }
+
+        let _ = env_logger::builder()
+            .default_format_timestamp(true)
+            .default_format_module_path(true)
+            .is_test(enable)
+            .try_init();
+    }
 
     fn new_test_manager<A: Attribute + serde::de::DeserializeOwned>() -> super::LmdbManager<A> {
         let temp = tempdir().expect("test was supposed to create temp dir");
@@ -307,6 +337,18 @@ pub mod tests {
                 test_suite
         }
     */
+    #[test]
+    fn txn_lmdb_cas_round_trip() {
+        enable_logging_for_test(true);
+        let entity_content = RawString::from("foo").into();
+        let other_content = RawString::from("blue").into();
+
+        let manager : LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager : LmdbManager<ExampleLink> = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.cas_round_trip_test::<ExampleAddressableContent, ExampleAddressableContent>(entity_content, other_content)
+    }
+
     #[test]
     fn txn_lmdb_eav_round_trip() {
         let entity_content =

@@ -7,7 +7,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, EnvironmentFlags, Value, Writer};
+use rkv::{error::StoreError, EnvironmentFlags, Value, Reader, Writer};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -79,26 +79,22 @@ where
 {
     pub fn add_lmdb_eavi<'env>(
         &self,
+        reader: &Reader<'env>,
         mut writer: &mut Writer<'env>,
-        eav: &EntityAttributeValueIndex<A>,
+       eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.lmdb.rkv().read().unwrap();
-        let reader = env.read()?;
-
         // use a clever key naming scheme to speed up exact match queries on the entity
         let mut new_eav = eav.clone();
         let mut key = format!("{}::{}", new_eav.entity(), new_eav.index());
 
         // need to check there isn't a duplicate key though and if there is create a new EAVI which
         // will have a more recent timestamp
-        while let Ok(Some(_)) = self.lmdb.store().get(&reader, key.clone()) {
+        while let Ok(Some(_)) = self.lmdb.store().get(reader, key.clone()) {
             new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
                 .unwrap();
             key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
-        drop(reader);
-        drop(env);
         self.lmdb.add(
             &mut writer,
             &key,
@@ -133,12 +129,11 @@ where
         Ok(Some(eav.clone()))
     }
 
-    pub fn fetch_lmdb_eavi(
+    pub fn fetch_lmdb_eavi<'env>(
         &self,
+        reader: rkv::Reader<'env>,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
-        let env = self.lmdb.rkv().read().unwrap();
-        let reader = env.read()?;
 
         let entries = match &query.entity {
             EavFilter::Exact(entity) => {
@@ -189,7 +184,9 @@ where
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
-        self.fetch_lmdb_eavi(query)
+        let env_lock = self.lmdb.rkv().read().unwrap();
+        let reader = env_lock.read().map_err(crate::error::to_api_error)?;
+        self.fetch_lmdb_eavi(reader, query)
             .map_err(|e| PersistenceError::from(format!("EAV fetch error: {}", e)))
     }
 }

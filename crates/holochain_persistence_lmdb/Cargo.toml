@@ -35,3 +35,5 @@ lazycell = "=1.2"
 
 [dev-dependencies]
 tempfile = "=3.0.7"
+env_logger = "=0.6.1"
+
