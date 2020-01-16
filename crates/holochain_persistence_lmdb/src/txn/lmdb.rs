@@ -305,13 +305,14 @@ pub fn new_manager<
 
 #[cfg(test)]
 pub mod tests {
+
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::ExampleLink,
+            storage::{ContentAddressableStorage, ExampleLink},
         },
-        eav::{Attribute, ExampleAttribute},
+        eav::{Attribute, ExampleAttribute, /*EntityAttributeValueStorage, EntityAttributeValueIndex*/},
         txn::*,
     };
     use tempfile::tempdir;
@@ -335,7 +336,7 @@ pub mod tests {
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let staging_temp_path =
             String::from(temp.path().to_str().expect("temp dir could not be string"));
-        super::new_manager(temp_path, staging_temp_path, None, None, None, None)
+        super::new_manager(temp_path, staging_temp_path, Some(1024*1024), None, Some(1024*1024), None)
     }
     /*
         fn new_test_suite<A:Attribute+Clone, CP:CursorProvider<A>+Clone, TCP: CursorProvider<ExampleLink>+Clone>() -> PersistenceManagerTestSuite<A, CP, TCP> where CP::Cursor: Clone, TCP::Cursor: Clone
@@ -413,6 +414,55 @@ pub mod tests {
     }
 
     #[test]
+    fn txn_lmdb_can_write_cas_entry_larger_than_map() {
+        let manager : LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+ 
+        let inititial_mmap_size = 1024 * 1024;
+
+        enable_logging_for_test(true);
+        test_suite.with_cursor("txn_can_write_cas_entry_larger_than_map", |cursor| {
+        // can write a single entry that is much larger than the current mmap
+        let data: Vec<u8> = std::iter::repeat(0)
+            .take(10 * inititial_mmap_size)
+            .collect();
+
+            let example_content : ExampleAddressableContent =
+                ExampleAddressableContent::try_from_content(&RawString::from(String::from_utf8_lossy(data.as_slice()).to_string()).into())
+                .unwrap();
+            cursor.add(&example_content).unwrap();
+        })
+  }
+ /*
+    #[test]
+    fn txn_lmdb_can_write_eav_entry_larger_than_map() {
+        let manager : LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+ 
+        let inititial_mmap_size = 1024 * 10;
+
+        enable_logging_for_test(true);
+        for i in 0..10000 {
+            trace!("iter [{}]", i);
+            test_suite.with_cursor("txn_can_write_entry_larger_than_map", |cursor| {
+                // can write a single entry that is much larger than the current mmap
+                let data: Vec<u8> = std::iter::repeat(0)
+                    .take(10 * inititial_mmap_size)
+                    .collect();
+
+                let data : String =
+                    RawString::from(String::from_utf8_lossy(data.as_slice()).to_string()).into();
+                let eavi = EntityAttributeValueIndex::new(&holochain_persistence_api::hash::HashString::from(data.clone()),
+                &ExampleAttribute::WithoutPayload, &data.into()).unwrap();
+                cursor.add_eavi(&eavi).unwrap();
+            })
+        }
+    }
+*/
+ 
+    #[test]
     fn txn_lmdb_tombstone() {
         /* Does not yet compile!
         let manager = new_test_manager();
@@ -422,3 +472,4 @@ pub mod tests {
         */
     }
 }
+

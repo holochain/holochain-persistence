@@ -326,7 +326,7 @@ where
         );
     }
 
-    fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
+    pub fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
         Self::with_cursor_internal(&self.cursor_provider, context, f)
     }
 
