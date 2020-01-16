@@ -286,6 +286,31 @@ where
         }
     }
 
+    /// Calls the given function `f` with a live cursor and commits the transaction.
+    /// Asserts the commit succeeded.
+    fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
+        let cursor_result = self.cursor_provider.create_cursor();
+        assert!(
+            cursor_result.is_ok(),
+            format!(
+                "{}: Failed to create cursor: {:?}",
+                context,
+                cursor_result.err()
+            )
+        );
+        let cursor = cursor_result.unwrap();
+        f(cursor.clone());
+        let commit_result = cursor.commit();
+        assert!(
+            commit_result.is_ok(),
+            format!(
+                "{}: Failed to commit cursor: {:?}",
+                context,
+                commit_result.err()
+            )
+        );
+    }
+
     pub fn cas_round_trip_test<Addressable, OtherAddressable>(
         &self,
         content: Content,
@@ -294,26 +319,10 @@ where
         Addressable: AddressableContent + Clone + PartialEq + Debug,
         OtherAddressable: AddressableContent + Clone + PartialEq + Debug,
     {
-        let cursor_result = self.cursor_provider.create_cursor();
-        assert!(
-            cursor_result.is_ok(),
-            format!(
-                "cas_round_trip_test: Failed to create cursor: {:?}",
-                cursor_result.err()
-            )
-        );
-        let cursor = cursor_result.unwrap();
-
-        let cas_test_suite = StorageTestSuite::new(cursor.clone());
-        cas_test_suite.round_trip_test::<Addressable, OtherAddressable>(content, other_content);
-        let commit_result = cursor.commit();
-        assert!(
-            commit_result.is_ok(),
-            format!(
-                "cas_round_trip_test: Failed to commit cursor: {:?}",
-                commit_result.err()
-            )
-        );
+        self.with_cursor("txn_cas_round_trip_test", |cursor| {
+            let cas_test_suite = StorageTestSuite::new(cursor.clone());
+            cas_test_suite.round_trip_test::<Addressable, OtherAddressable>(content, other_content);
+        })
     }
 
     pub fn eav_test_round_trip(
@@ -322,47 +331,35 @@ where
         attribute: A,
         value_content: impl AddressableContent,
     ) {
-        let cursor_result = self.cursor_provider.create_cursor();
-        assert!(
-            cursor_result.is_ok(),
-            format!(
-                "eav_test_round_trip: Failed to create cursor: {:?}",
-                cursor_result.err()
-            )
-        );
-        let cursor = cursor_result.unwrap();
-        EavTestSuite::test_round_trip(cursor.clone(), entity_content, attribute, value_content);
-        let commit_result = cursor.commit();
-        assert!(
-            commit_result.is_ok(),
-            format!(
-                "eav_test_round_trip: Failed to commit cursor: {:?}",
-                commit_result.err()
-            )
-        );
+        self.with_cursor("txn_eav_test_round_trip", |cursor| {
+            EavTestSuite::test_round_trip(cursor, entity_content, attribute, value_content)
+        })
     }
 
     pub fn eav_test_one_to_many<Addressable>(&self, attribute: &A)
     where
         Addressable: AddressableContent + Clone,
     {
-        let cursor_result = self.cursor_provider.create_cursor();
-        assert!(
-            cursor_result.is_ok(),
-            format!(
-                "eav_test_one_to_many: Failed to create cursor: {:?}",
-                cursor_result.err()
-            )
-        );
-        let cursor = cursor_result.unwrap();
-        EavTestSuite::test_one_to_many::<Addressable, A, CP::Cursor>(cursor.clone(), attribute);
-        let commit_result = cursor.commit();
-        assert!(
-            commit_result.is_ok(),
-            format!(
-                "eav_test_one_to_many: Failed to commit cursor: {:?}",
-                commit_result.err()
-            )
-        );
+        self.with_cursor("txn_eav_test_one_to_many", |cursor| {
+            EavTestSuite::test_one_to_many::<Addressable, A, CP::Cursor>(cursor, attribute)
+        })
+    }
+
+    pub fn eav_test_range<Addressable>(&self, attribute: &A)
+    where
+        Addressable: AddressableContent + Clone,
+    {
+        self.with_cursor("txn_eav_test_range", |cursor| {
+            EavTestSuite::test_range::<Addressable, A, CP::Cursor>(cursor, attribute)
+        })
+    }
+
+    pub fn test_multiple_attributes<Addressable: AddressableContent + Clone>(
+        &self,
+        attributes: Vec<A>,
+    ) {
+        self.with_cursor("txn_eav_test_multiple_attributes", |cursor| {
+            EavTestSuite::test_multiple_attributes::<Addressable, A, CP::Cursor>(cursor, attributes)
+        })
     }
 }
