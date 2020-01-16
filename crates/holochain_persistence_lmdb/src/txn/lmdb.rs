@@ -1,10 +1,10 @@
-use holochain_logging::prelude::*;
 use crate::{
     cas::lmdb::LmdbStorage,
     common::LmdbInstance,
     eav::lmdb::EavLmdbStorage,
     error::{is_store_full_error, is_store_full_result, to_api_error},
 };
+use holochain_logging::prelude::*;
 use holochain_persistence_api::{
     cas::{content::*, storage::*},
     eav::*,
@@ -39,12 +39,12 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         trace!("writer: commit_internal got env write lock");
         let mut writer = env_lock.write().unwrap();
         trace!("writer: commit_internal got writer");
- 
+
         let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
         trace!("writer: commit_internal got staging env lock");
         let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
         trace!("writer: commit_internal got staging reader");
- 
+
         let staged_cas_data = self
             .staging_cas_db
             .lmdb_iter(&staging_reader)
@@ -64,7 +64,9 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             result.map_err(to_api_error)?;
         }
 
-        let staged_eav_data = self.staging_eav_db.fetch_lmdb_eavi(staging_reader, &EaviQuery::default())
+        let staged_eav_data = self
+            .staging_eav_db
+            .fetch_lmdb_eavi(staging_reader, &EaviQuery::default())
             .map_err(to_api_error)?;
 
         let reader = env_lock.read().map_err(to_api_error)?;
@@ -81,21 +83,24 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         }
 
         drop(staging_env_lock);
-        writer.commit().map(|()| {
-            trace!("writer: commit_internal success");
-            Ok(true)
-        }).unwrap_or_else(|e| {
-            trace!("writer: commit_internal error on commit");
-            if is_store_full_error(&e) {
-                trace!("writer: commit_internal store full on commit");
-                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
-                Ok(false)
-            } else {
-                trace!("writer: commit_internal generic error on commit");
-                Err(to_api_error(e))
-            }
-        })
+        writer
+            .commit()
+            .map(|()| {
+                trace!("writer: commit_internal success");
+                Ok(true)
+            })
+            .unwrap_or_else(|e| {
+                trace!("writer: commit_internal error on commit");
+                if is_store_full_error(&e) {
+                    trace!("writer: commit_internal store full on commit");
+                    let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                    env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
+                    Ok(false)
+                } else {
+                    trace!("writer: commit_internal generic error on commit");
+                    Err(to_api_error(e))
+                }
+            })
     }
 }
 
@@ -301,7 +306,10 @@ pub fn new_manager<
 pub mod tests {
     use holochain_json_api::json::RawString;
     use holochain_persistence_api::{
-        cas::{storage::ExampleLink, content::{AddressableContent, ExampleAddressableContent}},
+        cas::{
+            content::{AddressableContent, ExampleAddressableContent},
+            storage::ExampleLink,
+        },
         eav::{Attribute, ExampleAttribute},
         txn::*,
     };
@@ -343,10 +351,13 @@ pub mod tests {
         let entity_content = RawString::from("foo").into();
         let other_content = RawString::from("blue").into();
 
-        let manager : LmdbManager<ExampleAttribute> = new_test_manager();
-        let tombstone_manager : LmdbManager<ExampleLink> = new_test_manager();
+        let manager: LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager: LmdbManager<ExampleLink> = new_test_manager();
         let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
-        test_suite.cas_round_trip_test::<ExampleAddressableContent, ExampleAddressableContent>(entity_content, other_content)
+        test_suite.cas_round_trip_test::<ExampleAddressableContent, ExampleAddressableContent>(
+            entity_content,
+            other_content,
+        )
     }
 
     #[test]

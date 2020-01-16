@@ -7,7 +7,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, EnvironmentFlags, Value, Reader, Writer};
+use rkv::{error::StoreError, EnvironmentFlags, Reader, Value, Writer};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -81,7 +81,7 @@ where
         &self,
         reader: &Reader<'env>,
         mut writer: &mut Writer<'env>,
-       eav: &EntityAttributeValueIndex<A>,
+        eav: &EntityAttributeValueIndex<A>,
     ) -> Result<Option<EntityAttributeValueIndex<A>>, StoreError> {
         // use a clever key naming scheme to speed up exact match queries on the entity
         let mut new_eav = eav.clone();
@@ -134,7 +134,6 @@ where
         reader: rkv::Reader<'env>,
         query: &EaviQuery<A>,
     ) -> Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError> {
-
         let entries = match &query.entity {
             EavFilter::Exact(entity) => {
                 // Can optimize here thanks to the sorted keys and only iterate matching entities
