@@ -118,6 +118,9 @@ impl<A: Attribute> EnvCursor<A> {
 }
 
 impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
+
+    /// Adds `content` only to the staging CAS database. Use `commit()` to write to the
+    /// primary.
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.staging_cas_db.add(content)
     }
@@ -127,6 +130,8 @@ impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
             .map(|maybe_content| maybe_content.is_some())
     }
 
+    /// First try the staging CAS database, then the primary. Cache the results from the 
+    /// primary into the staging database.
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
         let maybe_content = self.staging_cas_db.fetch(address)?;
 
@@ -150,6 +155,8 @@ impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
 }
 
 impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> for EnvCursor<A> {
+    /// Adds `content` only to the staging EAVI database. Use `commit()` to write to the
+    /// primary.
     fn add_eavi(
         &self,
         eav: &EntityAttributeValueIndex<A>,
@@ -159,7 +166,9 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
             .map_err(to_api_error)
     }
 
-    fn fetch_eavi(
+    /// First query the staging EAVI database, then the primary. Cache the results from the 
+    /// primary into the staging database.
+     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
@@ -236,6 +245,8 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
     }
 }
 
+pub type LmdbManager<A> = DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>>;
+
 pub fn new_manager<
     A: Attribute + DeserializeOwned,
     EP: AsRef<Path> + Clone,
@@ -247,7 +258,7 @@ pub fn new_manager<
     env_flags: Option<EnvironmentFlags>,
     staging_initial_map_size: Option<usize>,
     staging_env_flags: Option<EnvironmentFlags>,
-) -> DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>> {
+) -> LmdbManager<A> {
     let cas_db_name = crate::cas::lmdb::CAS_BUCKET;
     let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
     let db_names = vec![cas_db_name, eav_db_name];
