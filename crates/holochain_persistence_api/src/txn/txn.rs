@@ -1,3 +1,4 @@
+use crate::cas::storage::ExampleLink;
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{
     cas::{
@@ -269,27 +270,40 @@ impl<
 pub struct PersistenceManagerTestSuite<
     A: Attribute + Clone,
     CP: CursorProvider<A> + Clone + 'static,
+    TCP: CursorProvider<ExampleLink> + Clone + 'static,
 > {
     cursor_provider: CP,
     phantom: PhantomData<A>,
+    tombstone_cursor_provider: TCP,
 }
 
-impl<A: Attribute + Clone, CP: CursorProvider<A> + Clone + 'static>
-    PersistenceManagerTestSuite<A, CP>
+impl<
+        A: Attribute + Clone,
+        CP: CursorProvider<A> + Clone + 'static,
+        TCP: CursorProvider<ExampleLink> + Clone + 'static,
+    > PersistenceManagerTestSuite<A, CP, TCP>
 where
     CP::Cursor: Clone + 'static,
+    TCP::Cursor: Clone,
 {
-    pub fn new(cursor_provider: CP) -> Self {
+    pub fn new(cursor_provider: CP, tombstone_cursor_provider: TCP) -> Self {
         Self {
             cursor_provider,
+            tombstone_cursor_provider,
             phantom: PhantomData,
         }
     }
 
     /// Calls the given function `f` with a live cursor and commits the transaction.
     /// Asserts the commit succeeded.
-    fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
-        let cursor_result = self.cursor_provider.create_cursor();
+    fn with_cursor_internal<AA: Attribute, CI: CursorProvider<AA>>(
+        cursor_provider: &CI,
+        context: &str,
+        f: impl FnOnce(CI::Cursor) -> (),
+    ) where
+        CI::Cursor: Clone,
+    {
+        let cursor_result = cursor_provider.create_cursor();
         assert!(
             cursor_result.is_ok(),
             format!(
@@ -309,6 +323,10 @@ where
                 commit_result.err()
             )
         );
+    }
+
+    fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
+        Self::with_cursor_internal(&self.cursor_provider, context, f)
     }
 
     pub fn cas_round_trip_test<Addressable, OtherAddressable>(
@@ -361,5 +379,25 @@ where
         self.with_cursor("txn_eav_test_multiple_attributes", |cursor| {
             EavTestSuite::test_multiple_attributes::<Addressable, A, CP::Cursor>(cursor, attributes)
         })
+    }
+
+    pub fn eav_many_to_one<Addressable>(&self, attribute: &A)
+    where
+        Addressable: AddressableContent + Clone,
+    {
+        self.with_cursor("txn_eav_test_many_to_one", |cursor| {
+            EavTestSuite::test_many_to_one::<Addressable, A, CP::Cursor>(cursor, attribute)
+        })
+    }
+
+    pub fn eav_tombstone<Addressable>(&self)
+    where
+        Addressable: AddressableContent + Clone,
+    {
+        Self::with_cursor_internal(
+            &self.tombstone_cursor_provider,
+            "txn_eav_test_tombstone",
+            |cursor| EavTestSuite::test_tombstone::<Addressable, _>(cursor),
+        )
     }
 }
