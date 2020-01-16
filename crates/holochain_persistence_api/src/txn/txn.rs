@@ -354,10 +354,10 @@ where
         })
     }
 
-    pub fn test_multiple_attributes<Addressable: AddressableContent + Clone>(
-        &self,
-        attributes: Vec<A>,
-    ) {
+    pub fn test_multiple_attributes<Addressable>(&self, attributes: Vec<A>)
+    where
+        Addressable: AddressableContent + Clone,
+    {
         self.with_cursor("txn_eav_test_multiple_attributes", |cursor| {
             EavTestSuite::test_multiple_attributes::<Addressable, A, CP::Cursor>(cursor, attributes)
         })
