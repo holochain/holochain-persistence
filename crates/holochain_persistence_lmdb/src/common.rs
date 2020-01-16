@@ -43,6 +43,10 @@ impl LmdbInstance {
 
     /// Instantiates multiple lmdb database instances for a set of `db_names` at `path` and
     /// initial map size `initial_map_size`. Transactions will be synchronized over all of them.
+    /// If `use_rkv_manager` is set to the default of `true`, the provided `rkv::Manager` singleton
+    /// will ensure only one environment is created for the process per given `path`. 
+    ///
+    /// If this is already enforced outside this api then set it to false.
     pub fn new_all<P: AsRef<Path> + Clone>(
         db_names: &[&str],
         path: P,
