@@ -252,11 +252,18 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
         // TODO do we need this if the environment flags are set correctly? That is, it should just
         // be an in memory only database with no file system handles?
         fs::create_dir_all(staging_path.as_path())?;
+
+        // This avoids using the singletone rkv manager which caches all environments for all
+        // eternity. As these are randomly pathed staging databases, there is no need for a
+        // singleton to ensure only one environment is created per path.
+        let use_rkv_manager = false;
+
         let staging_dbs = LmdbInstance::new_all(
             db_names.as_slice(),
             staging_path,
             self.staging_initial_map_size,
             self.staging_env_flags,
+            use_rkv_manager.into(),
         );
 
         let staging_cas_db =
@@ -292,7 +299,13 @@ pub fn new_manager<
     let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
     let db_names = vec![cas_db_name, eav_db_name];
 
-    let dbs = LmdbInstance::new_all(db_names.as_slice(), env_path, initial_map_size, env_flags);
+    let dbs = LmdbInstance::new_all(
+        db_names.as_slice(),
+        env_path,
+        initial_map_size,
+        env_flags,
+        Some(true),
+    );
 
     let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());
     let eav_db: EavLmdbStorage<A> =
@@ -461,7 +474,7 @@ pub mod tests {
         let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
 
         enable_logging_for_test(true);
-        test_suite.with_cursor("txn_can_write_entry_larger_than_map", |cursor| {
+        test_suite.with_cursor("txn_can_write_eav_entry_larger_than_map", |cursor| {
             for i in 0..10000 {
                 trace!("iter [{}]", i);
                 // can write a single entry that is much larger than the current mmap
@@ -478,6 +491,33 @@ pub mod tests {
                 cursor.add_eavi(&eavi).unwrap();
             }
         })
+    }
+
+    #[ignore = "slow test"]
+    #[test]
+    fn txn_lmdb_can_create_infinite_environments() {
+        let manager: LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+
+        enable_logging_for_test(true);
+        for i in 0..10000 {
+            test_suite.with_cursor("txn_lmdb_can_create_infinite_environments", |cursor| {
+                trace!("iter [{}]", i);
+                // can write a single entry that is much larger than the current mmap
+                let data: Vec<u8> = Vec::from(format!("{}", i).as_bytes());
+
+                let data: String =
+                    RawString::from(String::from_utf8_lossy(data.as_slice()).to_string()).into();
+                let eavi = EntityAttributeValueIndex::new(
+                    &holochain_persistence_api::hash::HashString::from(data.clone()),
+                    &ExampleAttribute::WithoutPayload,
+                    &data.into(),
+                )
+                .unwrap();
+                cursor.add_eavi(&eavi).unwrap();
+            })
+        }
     }
 
     #[test]

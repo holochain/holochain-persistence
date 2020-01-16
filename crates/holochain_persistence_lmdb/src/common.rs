@@ -34,7 +34,7 @@ impl LmdbInstance {
         initial_map_bytes: Option<usize>,
         flags: Option<EnvironmentFlags>,
     ) -> LmdbInstance {
-        Self::new_all(&[db_name], path, initial_map_bytes, flags)
+        Self::new_all(&[db_name], path, initial_map_bytes, flags, None)
             .into_iter()
             .next()
             .map(|(_db_name, instance)| instance)
@@ -48,13 +48,31 @@ impl LmdbInstance {
         path: P,
         initial_map_size: Option<usize>,
         flags: Option<EnvironmentFlags>,
+        use_rkv_manager: Option<bool>,
     ) -> HashMap<String, LmdbInstance> {
         std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
 
-        let rkv = Manager::singleton()
-            .write()
-            .unwrap()
-            .get_or_create(path.as_ref(), |path: &Path| {
+        let rkv =
+            if use_rkv_manager.unwrap_or_else(|| true) {
+                Manager::singleton()
+                    .write()
+                    .unwrap()
+                    .get_or_create(path.as_ref(), |path: &Path| {
+                        let mut env_builder = Rkv::environment_builder();
+                        env_builder
+                            // max size of memory map, can be changed later
+                            .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
+                            // max number of DBs in this environment
+                            .set_max_dbs(db_names.len() as u32)
+                            // These flags make writes waaaaay faster by async writing to disk rather than blocking
+                            // There is some loss of data integrity guarantees that comes with this
+                            .set_flags(flags.unwrap_or_else(|| {
+                                EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
+                            }));
+                        Rkv::from_env(path, env_builder)
+                    })
+                    .expect("Could not create the environment")
+            } else {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
@@ -66,9 +84,10 @@ impl LmdbInstance {
                     .set_flags(flags.unwrap_or_else(|| {
                         EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
                     }));
-                Rkv::from_env(path, env_builder)
-            })
-            .expect("Could not create the environment");
+                Arc::new(RwLock::new(
+                    Rkv::from_env(path.as_ref(), env_builder).unwrap(),
+                ))
+            };
 
         db_names
             .iter()
