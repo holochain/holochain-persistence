@@ -175,10 +175,10 @@ pub fn handle_cursor_tuple_result(
     }
 }
 
-const MAP_GROWTH_FACTOR : usize = 8;
+const MAP_GROWTH_FACTOR: usize = 8;
 
 pub fn map_growth_factor() -> usize {
-   MAP_GROWTH_FACTOR 
+    MAP_GROWTH_FACTOR
 }
 
 #[cfg(test)]
@@ -209,7 +209,10 @@ pub mod tests {
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * map_growth_factor());
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size * map_growth_factor()
+        );
 
         // Do it again for good measure
         while lmdb.info().unwrap().map_size() == map_growth_factor() * inititial_mmap_size {
@@ -221,7 +224,10 @@ pub mod tests {
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * map_growth_factor() * map_growth_factor(),);
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size * map_growth_factor() * map_growth_factor(),
+        );
     }
 
     #[test]

@@ -59,7 +59,9 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
                 drop(writer);
                 trace!("writer: commit_internal store full while adding cas data");
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                env_lock.set_map_size(map_size * map_growth_factor()).map_err(to_api_error)?;
+                env_lock
+                    .set_map_size(map_size * map_growth_factor())
+                    .map_err(to_api_error)?;
                 return Ok(false);
             }
             result.map_err(to_api_error)?;
@@ -77,7 +79,9 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
                 trace!("writer: commit_internal store full while adding eavi data");
                 drop(writer);
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                env_lock.set_map_size(map_size * map_growth_factor()).map_err(to_api_error)?;
+                env_lock
+                    .set_map_size(map_size * map_growth_factor())
+                    .map_err(to_api_error)?;
                 return Ok(false);
             }
             result.map_err(to_api_error)?;
@@ -95,7 +99,9 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
                 if is_store_full_error(&e) {
                     trace!("writer: commit_internal store full on commit");
                     let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                    env_lock.set_map_size(map_size * map_growth_factor()).map_err(to_api_error)?;
+                    env_lock
+                        .set_map_size(map_size * map_growth_factor())
+                        .map_err(to_api_error)?;
                     Ok(false)
                 } else {
                     trace!("writer: commit_internal generic error on commit");
@@ -311,9 +317,11 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{ExampleLink, ContentAddressableStorage},
+            storage::{ContentAddressableStorage, ExampleLink},
         },
-        eav::{Attribute, ExampleAttribute, EntityAttributeValueStorage, EntityAttributeValueIndex},
+        eav::{
+            Attribute, EntityAttributeValueIndex, EntityAttributeValueStorage, ExampleAttribute,
+        },
         txn::*,
     };
     use tempfile::tempdir;
@@ -444,29 +452,33 @@ pub mod tests {
             cursor.add(&example_content).unwrap();
         })
     }
-    
-        #[ignore = "slow test"]
-        #[test]
-        fn txn_lmdb_can_write_eav_entry_larger_than_map() {
-            let manager : LmdbManager<ExampleAttribute> = new_test_manager();
-            let tombstone_manager = new_test_manager();
-            let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
 
+    #[ignore = "slow test"]
+    #[test]
+    fn txn_lmdb_can_write_eav_entry_larger_than_map() {
+        let manager: LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
 
-            enable_logging_for_test(true);
-               test_suite.with_cursor("txn_can_write_entry_larger_than_map", |cursor| {
-                    for i in 0..10000 {
-                        trace!("iter [{}]", i);
-                      // can write a single entry that is much larger than the current mmap
-                    let data: Vec<u8> = Vec::from(format!("{}", i).as_bytes());
+        enable_logging_for_test(true);
+        test_suite.with_cursor("txn_can_write_entry_larger_than_map", |cursor| {
+            for i in 0..10000 {
+                trace!("iter [{}]", i);
+                // can write a single entry that is much larger than the current mmap
+                let data: Vec<u8> = Vec::from(format!("{}", i).as_bytes());
 
-                    let data : String =
-                        RawString::from(String::from_utf8_lossy(data.as_slice()).to_string()).into();
-                    let eavi = EntityAttributeValueIndex::new(&holochain_persistence_api::hash::HashString::from(data.clone()),
-                    &ExampleAttribute::WithoutPayload, &data.into()).unwrap();
-                    cursor.add_eavi(&eavi).unwrap();
-                }})
-        }
+                let data: String =
+                    RawString::from(String::from_utf8_lossy(data.as_slice()).to_string()).into();
+                let eavi = EntityAttributeValueIndex::new(
+                    &holochain_persistence_api::hash::HashString::from(data.clone()),
+                    &ExampleAttribute::WithoutPayload,
+                    &data.into(),
+                )
+                .unwrap();
+                cursor.add_eavi(&eavi).unwrap();
+            }
+        })
+    }
 
     #[test]
     fn txn_lmdb_tombstone() {
