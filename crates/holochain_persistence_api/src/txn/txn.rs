@@ -2,13 +2,13 @@
 use crate::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{ContentAddressableStorage, EavTestSuite, StorageTestSuite},
     },
     eav::*,
     error::*,
     reporting::{ReportStorage, StorageReport},
 };
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData};
 use uuid::Uuid;
 
 /// Defines a transactional writer, typically implemented over a cursor.
@@ -263,5 +263,106 @@ impl<
 
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
         self.cursor_provider.create_cursor()
+    }
+}
+
+pub struct PersistenceManagerTestSuite<
+    A: Attribute + Clone,
+    CP: CursorProvider<A> + Clone + 'static,
+> {
+    cursor_provider: CP,
+    phantom: PhantomData<A>,
+}
+
+impl<A: Attribute + Clone, CP: CursorProvider<A> + Clone + 'static>
+    PersistenceManagerTestSuite<A, CP>
+where
+    CP::Cursor: Clone + 'static,
+{
+    pub fn new(cursor_provider: CP) -> Self {
+        Self {
+            cursor_provider,
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn cas_round_trip_test<Addressable, OtherAddressable>(
+        &self,
+        content: Content,
+        other_content: Content,
+    ) where
+        Addressable: AddressableContent + Clone + PartialEq + Debug,
+        OtherAddressable: AddressableContent + Clone + PartialEq + Debug,
+    {
+        let cursor_result = self.cursor_provider.create_cursor();
+        assert!(
+            cursor_result.is_ok(),
+            format!(
+                "cas_round_trip_test: Failed to create cursor: {:?}",
+                cursor_result.err()
+            )
+        );
+        let cursor = cursor_result.unwrap();
+
+        let cas_test_suite = StorageTestSuite::new(cursor.clone());
+        cas_test_suite.round_trip_test::<Addressable, OtherAddressable>(content, other_content);
+        let commit_result = cursor.commit();
+        assert!(
+            commit_result.is_ok(),
+            format!(
+                "cas_round_trip_test: Failed to commit cursor: {:?}",
+                commit_result.err()
+            )
+        );
+    }
+
+    pub fn eav_test_round_trip(
+        &self,
+        entity_content: impl AddressableContent,
+        attribute: A,
+        value_content: impl AddressableContent,
+    ) {
+        let cursor_result = self.cursor_provider.create_cursor();
+        assert!(
+            cursor_result.is_ok(),
+            format!(
+                "eav_test_round_trip: Failed to create cursor: {:?}",
+                cursor_result.err()
+            )
+        );
+        let cursor = cursor_result.unwrap();
+        EavTestSuite::test_round_trip(cursor.clone(), entity_content, attribute, value_content);
+        let commit_result = cursor.commit();
+        assert!(
+            commit_result.is_ok(),
+            format!(
+                "eav_test_round_trip: Failed to commit cursor: {:?}",
+                commit_result.err()
+            )
+        );
+    }
+
+    pub fn eav_test_one_to_many<Addressable>(&self, attribute: &A)
+    where
+        Addressable: AddressableContent + Clone,
+    {
+        let cursor_result = self.cursor_provider.create_cursor();
+        assert!(
+            cursor_result.is_ok(),
+            format!(
+                "eav_test_one_to_many: Failed to create cursor: {:?}",
+                cursor_result.err()
+            )
+        );
+        let cursor = cursor_result.unwrap();
+        EavTestSuite::test_one_to_many::<Addressable, A, CP::Cursor>(cursor.clone(), attribute);
+        let commit_result = cursor.commit();
+        assert!(
+            commit_result.is_ok(),
+            format!(
+                "eav_test_one_to_many: Failed to commit cursor: {:?}",
+                commit_result.err()
+            )
+        );
     }
 }
