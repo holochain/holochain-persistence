@@ -35,11 +35,6 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
     /// full and retry is required with the newly allocated map size.
     fn commit_internal(&self) -> PersistenceResult<bool> {
         trace!("writer: commit_internal start");
-        let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
-        trace!("writer: commit_internal got env write lock");
-        let mut writer = env_lock.write().unwrap();
-        trace!("writer: commit_internal got writer");
-
         let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
         trace!("writer: commit_internal got staging env lock");
         let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
@@ -50,12 +45,18 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
             .lmdb_iter(&staging_reader)
             .map_err(to_api_error)?;
 
+        let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
+        trace!("writer: commit_internal got env write lock");
+        let mut writer = env_lock.write().unwrap();
+        trace!("writer: commit_internal got writer");
+
         for (_address, maybe_content) in staged_cas_data {
             let result = maybe_content
                 .as_ref()
                 .map(|content| self.cas_db.lmdb_add(&mut writer, content))
                 .unwrap_or_else(|| Ok(()));
             if is_store_full_result(&result) {
+                drop(writer);
                 trace!("writer: commit_internal store full while adding cas data");
                 let map_size = env_lock.info().map_err(to_api_error)?.map_size();
                 env_lock.set_map_size(map_size * 2).map_err(to_api_error)?;
