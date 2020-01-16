@@ -118,7 +118,6 @@ impl<A: Attribute> EnvCursor<A> {
 }
 
 impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
-
     /// Adds `content` only to the staging CAS database. Use `commit()` to write to the
     /// primary.
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
@@ -130,7 +129,7 @@ impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
             .map(|maybe_content| maybe_content.is_some())
     }
 
-    /// First try the staging CAS database, then the primary. Cache the results from the 
+    /// First try the staging CAS database, then the primary. Cache the results from the
     /// primary into the staging database.
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
         let maybe_content = self.staging_cas_db.fetch(address)?;
@@ -166,9 +165,9 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
             .map_err(to_api_error)
     }
 
-    /// First query the staging EAVI database, then the primary. Cache the results from the 
+    /// First query the staging EAVI database, then the primary. Cache the results from the
     /// primary into the staging database.
-     fn fetch_eavi(
+    fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>> {
@@ -245,7 +244,8 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
     }
 }
 
-pub type LmdbManager<A> = DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>>;
+pub type LmdbManager<A> =
+    DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>>;
 
 pub fn new_manager<
     A: Attribute + DeserializeOwned,
@@ -278,4 +278,93 @@ pub fn new_manager<
     };
 
     DefaultPersistenceManager::new(cas_db, eav_db, cursor_provider)
+}
+
+#[cfg(test)]
+pub mod tests {
+    use holochain_json_api::json::RawString;
+    use holochain_persistence_api::{
+        cas::content::{AddressableContent, ExampleAddressableContent},
+        eav::{Attribute, ExampleAttribute},
+        txn::*,
+    };
+    use tempfile::tempdir;
+    //    use holochain_persistence_api::cas::storage::ExampleLink;
+
+    fn new_test_manager<A: Attribute + serde::de::DeserializeOwned>() -> super::LmdbManager<A> {
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        let staging_temp_path =
+            String::from(temp.path().to_str().expect("temp dir could not be string"));
+        super::new_manager(temp_path, staging_temp_path, None, None, None, None)
+    }
+    /*
+        fn new_test_suite<A:Attribute+Clone, CP:CursorProvider<A>+Clone, TCP: CursorProvider<ExampleLink>+Clone>() -> PersistenceManagerTestSuite<A, CP, TCP> where CP::Cursor: Clone, TCP::Cursor: Clone
+     {
+                let manager = new_test_manager();
+                let tombstone_manager = new_test_manager();
+                let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+                test_suite
+        }
+    */
+    #[test]
+    fn txn_lmdb_eav_round_trip() {
+        let entity_content =
+            ExampleAddressableContent::try_from_content(&RawString::from("foo").into()).unwrap();
+        let attribute = ExampleAttribute::WithPayload("favourite-color".to_string());
+        let value_content =
+            ExampleAddressableContent::try_from_content(&RawString::from("blue").into()).unwrap();
+
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_round_trip(entity_content, attribute, value_content)
+    }
+
+    #[test]
+    fn txn_lmdb_eav_one_to_many() {
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_one_to_many::<ExampleAddressableContent>(&ExampleAttribute::default());
+    }
+
+    #[test]
+    fn txn_lmdb_eav_many_to_one() {
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_many_to_one::<ExampleAddressableContent>(&ExampleAttribute::default());
+    }
+
+    #[test]
+    fn txn_lmdb_eav_range() {
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_range::<ExampleAddressableContent>(&ExampleAttribute::default());
+    }
+
+    #[test]
+    fn txn_lmdb_eav_prefixes() {
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_multiple_attributes::<ExampleAddressableContent>(
+            vec!["a_", "b_", "c_", "d_"]
+                .into_iter()
+                .map(|p| ExampleAttribute::WithPayload(p.to_string() + "one_to_many"))
+                .collect(),
+        );
+    }
+
+    #[test]
+    fn txn_lmdb_tombstone() {
+        /* Does not yet compile!
+        let manager = new_test_manager();
+        let tombstone_manager = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+        test_suite.eav_test_tombstone::<ExampleAddressableContent>()
+        */
+    }
 }

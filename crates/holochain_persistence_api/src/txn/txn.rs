@@ -180,6 +180,7 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 
 /// Provides a simple, extensable version of a persistance manager. Intended
 /// to be specialized for a particular database implementation easily.
+#[derive(Clone)]
 pub struct DefaultPersistenceManager<
     A: Attribute,
     CAS: ContentAddressableStorage + Clone,
@@ -372,7 +373,7 @@ where
         })
     }
 
-    pub fn test_multiple_attributes<Addressable>(&self, attributes: Vec<A>)
+    pub fn eav_test_multiple_attributes<Addressable>(&self, attributes: Vec<A>)
     where
         Addressable: AddressableContent + Clone,
     {
@@ -381,7 +382,7 @@ where
         })
     }
 
-    pub fn eav_many_to_one<Addressable>(&self, attribute: &A)
+    pub fn eav_test_many_to_one<Addressable>(&self, attribute: &A)
     where
         Addressable: AddressableContent + Clone,
     {
@@ -390,7 +391,7 @@ where
         })
     }
 
-    pub fn eav_tombstone<Addressable>(&self)
+    pub fn eav_test_tombstone<Addressable>(&self)
     where
         Addressable: AddressableContent + Clone,
     {
@@ -400,5 +401,4 @@ where
             |cursor| EavTestSuite::test_tombstone::<Addressable, _>(cursor),
         )
     }
-
 }
