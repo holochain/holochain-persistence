@@ -58,6 +58,20 @@ pub struct NonTransactionalCursor<
     eav: EAV,
     phantom: PhantomData<A>,
 }
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > NonTransactionalCursor<A, CAS, EAV>
+{
+    pub fn new(cas: CAS, eav: EAV) -> Self {
+        Self {
+            cas,
+            eav,
+            phantom: PhantomData,
+        }
+    }
+}
 
 impl<
         A: Attribute,
