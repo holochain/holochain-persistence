@@ -263,10 +263,18 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
             use_rkv_manager.into(),
         );
 
-        let staging_cas_db =
-            LmdbStorage::wrap(staging_dbs.get(&STAGING_CAS_BUCKET.to_string()).unwrap());
-        let staging_eav_db =
-            EavLmdbStorage::wrap(staging_dbs.get(&STAGING_EAV_BUCKET.to_string()).unwrap());
+        let staging_cas_db = LmdbStorage::wrap(
+            staging_dbs
+                .get(&STAGING_CAS_BUCKET.to_string())
+                .unwrap()
+                .clone(),
+        );
+        let staging_eav_db = EavLmdbStorage::wrap(
+            staging_dbs
+                .get(&STAGING_EAV_BUCKET.to_string())
+                .unwrap()
+                .clone(),
+        );
 
         Ok(EnvCursor::new(
             self.cas_db.clone(),
@@ -308,9 +316,9 @@ pub fn new_manager<
         use_rkv_manager.into(),
     );
 
-    let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());
+    let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap().clone());
     let eav_db: EavLmdbStorage<A> =
-        EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap());
+        EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap().clone());
 
     let cursor_provider = LmdbCursorProvider {
         cas_db: cas_db.clone(),

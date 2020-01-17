@@ -38,7 +38,7 @@ impl LmdbStorage {
         initial_map_bytes: Option<usize>,
         env_flags: Option<EnvironmentFlags>,
     ) -> Self {
-        Self::wrap(&LmdbInstance::new(
+        Self::wrap(LmdbInstance::new(
             CAS_BUCKET,
             db_path,
             initial_map_bytes,
@@ -46,10 +46,10 @@ impl LmdbStorage {
         ))
     }
 
-    pub fn wrap(lmdb: &LmdbInstance) -> Self {
+    pub fn wrap(lmdb: LmdbInstance) -> Self {
         Self {
             id: Uuid::new_v4(),
-            lmdb: lmdb.clone(),
+            lmdb,
         }
     }
 }
