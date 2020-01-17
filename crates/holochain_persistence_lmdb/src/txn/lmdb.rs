@@ -536,7 +536,7 @@ pub mod tests {
     fn txn_cas_eav_test_transaction_abort() {
         enable_logging_for_test(true);
         let entity_content = RawString::from("red").into();
-        let other_content = RawString::from("blue").into();
+        let attribute = ExampleAttribute::WithoutPayload;
         let transient_content = RawString::from("green").into();
 
         let manager: LmdbManager<ExampleAttribute> = new_test_manager();
@@ -546,7 +546,7 @@ pub mod tests {
         test_suite
             .cas_eav_test_transaction_abort::<ExampleAddressableContent, ExampleAddressableContent>(
                 entity_content,
-                other_content,
+                attribute,
                 transient_content,
             );
     }

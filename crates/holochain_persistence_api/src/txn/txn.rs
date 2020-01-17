@@ -419,27 +419,43 @@ where
     pub fn cas_eav_test_transaction_abort<Addressable, OtherAddressable>(
         &self,
         content: Content,
-        _other_content: Content,
+        attribute: A,
         transient_content: Content,
     ) where
         Addressable: AddressableContent + Clone + PartialEq + Debug,
         OtherAddressable: AddressableContent + Clone + PartialEq + Debug,
     {
         let addressable = Addressable::try_from_content(&content).unwrap();
+        let eavi_query = EaviQuery::new(
+            Some(content.address()).into(),
+            Some(attribute.clone()).into(),
+            Some(content.address()).into(),
+            IndexFilter::LatestByAttribute,
+            None,
+        );
         self.with_cursor("cas_eav_transaction_abort_test_setup", |cursor| {
             cursor.add(&addressable).unwrap();
+            let eavi = EntityAttributeValueIndex::new(
+                &addressable.address(),
+                &attribute,
+                &addressable.address(),
+            )
+            .unwrap();
+            cursor.add_eavi(&eavi).unwrap();
             assert!(cursor.contains(&addressable.address()).unwrap());
+            assert_eq!(cursor.fetch_eavi(&eavi_query).unwrap().len(), 1);
         });
 
         self.with_cursor("cas_eav_transaction_abort_test_sanity_check", |cursor| {
             assert!(cursor.contains(&addressable.address()).unwrap());
+            assert_eq!(cursor.fetch_eavi(&eavi_query).unwrap().len(), 1);
         });
 
         let cursor_result = self.cursor_provider.create_cursor();
         assert!(
             cursor_result.is_ok(),
             format!(
-                "Couldn't create cursor after setting primary database: {:?}",
+                "Couldn't create cursor after setting up primary cas database: {:?}",
                 cursor_result.err()
             )
         );
@@ -448,21 +464,46 @@ where
         let transient_addressable = Addressable::try_from_content(&transient_content).unwrap();
         assert!(!cursor.contains(&transient_addressable.address()).unwrap());
 
+        let transient_eavi_query = EaviQuery::new(
+            Some(transient_content.address()).into(),
+            Some(attribute.clone()).into(),
+            Some(transient_content.address()).into(),
+            IndexFilter::LatestByAttribute,
+            None,
+        );
+        assert!(cursor.fetch_eavi(&transient_eavi_query).unwrap().is_empty());
+
         let cursor_add_result = cursor.add(&transient_addressable);
         assert!(
             cursor_add_result.is_ok(),
-            "Cursor add failed for {:?}: {:?}",
+            "Cursor add failed for cas {:?}: {:?}",
             transient_addressable,
             cursor_add_result.err()
         );
 
-        assert!(cursor.contains(&transient_addressable.address()).unwrap());
+        let transient_eavi = EntityAttributeValueIndex::new(
+            &transient_addressable.address(),
+            &attribute,
+            &transient_addressable.address(),
+        )
+        .unwrap();
+        let cursor_add_result = cursor.add_eavi(&transient_eavi);
+        assert!(
+            cursor_add_result.is_ok(),
+            "Cursor add failed for eavi {:?}: {:?}",
+            transient_addressable,
+            cursor_add_result.err()
+        );
+        assert_eq!(cursor.fetch_eavi(&transient_eavi_query).unwrap().len(), 1);
+
         drop(cursor);
 
         self.with_cursor("cas_eav_transaction_abort_test_purity_check", |cursor| {
             assert!(!cursor.contains(&transient_addressable.address()).unwrap());
 
             assert!(cursor.contains(&addressable.address()).unwrap());
+            assert_eq!(cursor.fetch_eavi(&eavi_query).unwrap().len(), 1);
+            assert!(cursor.fetch_eavi(&transient_eavi_query).unwrap().is_empty());
         });
     }
 }
