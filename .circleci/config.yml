@@ -8,14 +8,14 @@ jobs:
    - checkout
    - run: nix-shell --run hcp-test
 
-deploy-crates:
- docker:
-  - image: holochain/holonix:latest
- steps:
-  - checkout
-  - run:
-     no_output_timeout: 20m
-     command: nix-shell --run "hn-release-hook-publish-crates-io 'holochain_persistence_api holochain_persistence_file holochain_persistence_lmdb holochain_persistence_mem holochain_persistence_pickle'"
+ deploy-crates:
+  docker:
+   - image: holochain/holonix:latest
+  steps:
+   - checkout
+   - run:
+      no_output_timeout: 20m
+      command: nix-shell --run "hn-release-hook-publish-crates-io 'holochain_persistence_api holochain_persistence_file holochain_persistence_lmdb holochain_persistence_mem holochain_persistence_pickle'"
 
 workflows:
  version: 2.1
