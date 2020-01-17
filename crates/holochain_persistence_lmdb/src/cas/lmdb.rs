@@ -121,7 +121,7 @@ impl LmdbStorage {
         self.lmdb
             .store()
             .iter_start(source)?
-            .map(|result| {
+            .try_fold((), |(), result| {
                 if let Ok((address, Some(data))) = result {
                     target
                         .lmdb
@@ -132,7 +132,6 @@ impl LmdbStorage {
                     result.map(|_| ())
                 }
             })
-            .collect::<Result<(), StoreError>>()
     }
 }
 
