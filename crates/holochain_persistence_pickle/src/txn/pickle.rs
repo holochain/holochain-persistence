@@ -1,6 +1,5 @@
 use holochain_persistence_api::{
     eav::*,
-    error::PersistenceResult,
     txn::{DefaultPersistenceManager, NonTransactionalCursor},
 };
 
@@ -24,15 +23,11 @@ pub fn new_manager<
 >(
     cas_dir: P,
     eav_dir: EP,
-) -> PersistenceResult<PickleManager<A>> {
+) -> PickleManager<A> {
     let cas_db = PickleStorage::new(cas_dir);
 
     let eav_db: EavPickleStorage<A> = EavPickleStorage::new(eav_dir);
 
     let cursor_provider = NonTransactionalCursor::new(cas_db.clone(), eav_db.clone());
-    Ok(DefaultPersistenceManager::new(
-        cas_db,
-        eav_db,
-        cursor_provider,
-    ))
+    DefaultPersistenceManager::new(cas_db, eav_db, cursor_provider)
 }
