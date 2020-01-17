@@ -39,7 +39,7 @@ impl<A: Attribute> EavLmdbStorage<A> {
         ))
     }
 
-    pub fn wrap(lmdb: &LmdbInstance) -> Self {
+    pub fn wrap(lmdb: LmdbInstance) -> Self {
         Self {
             id: Uuid::new_v4(),
             lmdb: lmdb.clone(),
