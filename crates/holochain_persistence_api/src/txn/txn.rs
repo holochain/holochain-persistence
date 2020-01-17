@@ -192,7 +192,7 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn eav(&self) -> Self::Eav;
 }
 
-/// Provides a simple, extensable version of a persistance manager. Intended
+/// Provides a simple, extensable version of a persistence manager. Intended
 /// to be specialized for a particular database implementation easily.
 #[derive(Clone)]
 pub struct DefaultPersistenceManager<
