@@ -50,10 +50,13 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         let mut writer = env_lock.write().unwrap();
         trace!("writer: commit_internal got writer");
 
-        for (_address, maybe_content) in staged_cas_data {
+        for (address, maybe_content) in staged_cas_data {
             let result = maybe_content
                 .as_ref()
-                .map(|content| self.cas_db.lmdb_add(&mut writer, content))
+                .map(|content| {
+                    trace!("add content with address {:?}: {:?}", address, content);
+                    self.cas_db.lmdb_add(&mut writer, content)
+                })
                 .unwrap_or_else(|| Ok(()));
             if is_store_full_result(&result) {
                 drop(writer);
@@ -164,11 +167,20 @@ impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
         let maybe_content = self.staging_cas_db.fetch(address)?;
 
         if maybe_content.is_some() {
+            trace!(
+                "maybe_content_is_some for address {:?} in staging: {:?},",
+                address,
+                maybe_content
+            );
             return Ok(maybe_content);
         }
 
         let maybe_content = self.cas_db.fetch(address)?;
-
+        trace!(
+            "maybe_content in primary for {:?}: {:?}",
+            address,
+            maybe_content
+        );
         if let Some(content) = maybe_content {
             self.staging_cas_db.add(&content)?;
             Ok(Some(content))
@@ -253,7 +265,7 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
         // be an in memory only database with no file system handles?
         fs::create_dir_all(staging_path.as_path())?;
 
-        // This avoids using the singletone rkv manager which caches all environments for all
+        // This avoids using the singleton rkv manager which caches all environments for all
         // eternity. As these are randomly pathed staging databases, there is no need for a
         // singleton to ensure only one environment is created per path.
         let use_rkv_manager = false;
@@ -520,6 +532,7 @@ pub mod tests {
         }
     }
 
+    #[ignore = "fails to compile"]
     #[test]
     fn txn_lmdb_tombstone() {
         /* Does not yet compile!
@@ -528,5 +541,24 @@ pub mod tests {
         let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
         test_suite.eav_test_tombstone::<ExampleAddressableContent>()
         */
+    }
+
+    #[test]
+    fn txn_cas_eav_test_transaction_abort() {
+        enable_logging_for_test(true);
+        let entity_content = RawString::from("red").into();
+        let other_content = RawString::from("blue").into();
+        let transient_content = RawString::from("green").into();
+
+        let manager: LmdbManager<ExampleAttribute> = new_test_manager();
+        let tombstone_manager: LmdbManager<ExampleLink> = new_test_manager();
+        let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
+
+        test_suite
+            .cas_eav_test_transaction_abort::<ExampleAddressableContent, ExampleAddressableContent>(
+                entity_content,
+                other_content,
+                transient_content,
+            );
     }
 }

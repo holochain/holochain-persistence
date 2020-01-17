@@ -11,7 +11,7 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, EnvironmentFlags, Reader, Value};
+use rkv::{error::StoreError, EnvironmentFlags, Reader, Value, Writer};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
@@ -108,6 +108,31 @@ impl LmdbStorage {
             .iter_start(reader)?
             .map(handle_cursor_tuple_result)
             .collect::<Result<Vec<(Address, Option<Content>)>, StoreError>>()
+    }
+
+    /// Copies all data from reader `source` to `target`
+    /// using `writer`.
+    pub fn copy_all<'env, 'env2>(
+        &self,
+        source: &Reader<'env>,
+        target: &Self,
+        mut writer: &mut Writer<'env2>,
+    ) -> Result<(), StoreError> {
+        self.lmdb
+            .store()
+            .iter_start(source)?
+            .map(|result| {
+                if let Ok((address, Some(data))) = result {
+                    target
+                        .lmdb
+                        .store()
+                        .put(&mut writer, address, &data)
+                        .map(|_| ())
+                } else {
+                    result.map(|_| ())
+                }
+            })
+            .collect::<Result<(), StoreError>>()
     }
 }
 

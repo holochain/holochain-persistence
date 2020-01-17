@@ -401,4 +401,54 @@ where
             |cursor| EavTestSuite::test_tombstone::<Addressable, _>(cursor),
         )
     }
+
+    pub fn cas_eav_test_transaction_abort<Addressable, OtherAddressable>(
+        &self,
+        content: Content,
+        _other_content: Content,
+        transient_content: Content,
+    ) where
+        Addressable: AddressableContent + Clone + PartialEq + Debug,
+        OtherAddressable: AddressableContent + Clone + PartialEq + Debug,
+    {
+        let addressable = Addressable::try_from_content(&content).unwrap();
+        self.with_cursor("cas_eav_transaction_abort_test_setup", |cursor| {
+            cursor.add(&addressable).unwrap();
+            assert!(cursor.contains(&addressable.address()).unwrap());
+        });
+
+        self.with_cursor("cas_eav_transaction_abort_test_sanity_check", |cursor| {
+            assert!(cursor.contains(&addressable.address()).unwrap());
+        });
+
+        let cursor_result = self.cursor_provider.create_cursor();
+        assert!(
+            cursor_result.is_ok(),
+            format!(
+                "Couldn't create cursor after setting primary database: {:?}",
+                cursor_result.err()
+            )
+        );
+
+        let cursor = cursor_result.unwrap();
+        let transient_addressable = Addressable::try_from_content(&transient_content).unwrap();
+        assert!(!cursor.contains(&transient_addressable.address()).unwrap());
+
+        let cursor_add_result = cursor.add(&transient_addressable);
+        assert!(
+            cursor_add_result.is_ok(),
+            "Cursor add failed for {:?}: {:?}",
+            transient_addressable,
+            cursor_add_result.err()
+        );
+
+        assert!(cursor.contains(&transient_addressable.address()).unwrap());
+        drop(cursor);
+
+        self.with_cursor("cas_eav_transaction_abort_test_purity_check", |cursor| {
+            assert!(!cursor.contains(&transient_addressable.address()).unwrap());
+
+            assert!(cursor.contains(&addressable.address()).unwrap());
+        });
+    }
 }
