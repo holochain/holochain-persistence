@@ -118,20 +118,7 @@ impl LmdbStorage {
         target: &Self,
         mut writer: &mut Writer<'env2>,
     ) -> Result<(), StoreError> {
-        self.lmdb
-            .store()
-            .iter_start(source)?
-            .try_fold((), |(), result| {
-                if let Ok((address, Some(data))) = result {
-                    target
-                        .lmdb
-                        .store()
-                        .put(&mut writer, address, &data)
-                        .map(|_| ())
-                } else {
-                    result.map(|_| ())
-                }
-            })
+        self.lmdb.copy_all(source, &target.lmdb, &mut writer)
     }
 }
 

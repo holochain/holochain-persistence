@@ -6,8 +6,8 @@ use holochain_persistence_api::{
     hash::HashString,
 };
 use rkv::{
-    DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
-    Writer,
+    DatabaseFlags, EnvironmentFlags, Manager, Reader, Rkv, SingleStore, StoreError, StoreOptions,
+    Value, Writer,
 };
 use std::{
     collections::HashMap,
@@ -178,6 +178,21 @@ impl LmdbInstance {
 
     pub fn store(&self) -> &SingleStore {
         &self.store
+    }
+
+    pub fn copy_all<'env, 'env2>(
+        &self,
+        source: &Reader<'env>,
+        target: &Self,
+        mut writer: &mut Writer<'env2>,
+    ) -> Result<(), StoreError> {
+        self.store().iter_start(source)?.try_fold((), |(), result| {
+            if let Ok((address, Some(data))) = result {
+                target.store().put(&mut writer, address, &data).map(|_| ())
+            } else {
+                result.map(|_| ())
+            }
+        })
     }
 }
 

@@ -60,26 +60,21 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         }
         copy_result.map_err(to_api_error)?;
 
-        let staged_eav_data = self
+        let copy_result = self
             .staging_eav_db
-            .fetch_lmdb_eavi(staging_reader, &EaviQuery::default())
-            .map_err(to_api_error)?;
+            .copy_all(&staging_reader, &self.eav_db, &mut writer);
 
-        let reader = env_lock.read().map_err(to_api_error)?;
-        for eavi in staged_eav_data {
-            let result = self.eav_db.add_lmdb_eavi(&reader, &mut writer, &eavi);
-            if is_store_full_result(&result) {
-                trace!("writer: commit_internal store full while adding eavi data");
-                drop(writer);
-                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                env_lock
-                    .set_map_size(map_size * map_growth_factor())
-                    .map_err(to_api_error)?;
-                return Ok(false);
-            }
-            result.map_err(to_api_error)?;
+        if is_store_full_result(&copy_result) {
+            drop(writer);
+            trace!("writer: commit_internal store full while adding eav data");
+            let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+            env_lock
+                .set_map_size(map_size * map_growth_factor())
+                .map_err(to_api_error)?;
+            return Ok(false);
         }
 
+        drop(staging_reader);
         drop(staging_env_lock);
         writer
             .commit()
@@ -301,12 +296,16 @@ pub fn new_manager<
     let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
     let db_names = vec![cas_db_name, eav_db_name];
 
+    // Ensure exactly one enviroment for the primary database by taking
+    // advantage of the `rkv::Manager`.
+    let use_rkv_manager = true;
+
     let dbs = LmdbInstance::new_all(
         db_names.as_slice(),
         env_path,
         initial_map_size,
         env_flags,
-        Some(true),
+        use_rkv_manager.into(),
     );
 
     let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap());

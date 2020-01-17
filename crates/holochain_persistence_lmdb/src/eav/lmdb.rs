@@ -46,6 +46,17 @@ impl<A: Attribute> EavLmdbStorage<A> {
             attribute: PhantomData,
         }
     }
+
+    /// Copies all data from reader `source` to `target`
+    /// using `writer`.
+    pub fn copy_all<'env, 'env2>(
+        &self,
+        source: &Reader<'env>,
+        target: &Self,
+        mut writer: &mut Writer<'env2>,
+    ) -> Result<(), StoreError> {
+        self.lmdb.copy_all(source, &target.lmdb, &mut writer)
+    }
 }
 
 impl<A: Attribute> Debug for EavLmdbStorage<A> {
