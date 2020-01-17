@@ -53,7 +53,7 @@ hcp-release-hook-version
 
    # publish artifacts to the world
    publish = ''
-hcp-release-hook-publish
+# crates are published from circle!
 '';
   };
 
