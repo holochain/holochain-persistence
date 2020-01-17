@@ -40,35 +40,25 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
         let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
         trace!("writer: commit_internal got staging reader");
 
-        let staged_cas_data = self
-            .staging_cas_db
-            .lmdb_iter(&staging_reader)
-            .map_err(to_api_error)?;
-
         let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
         trace!("writer: commit_internal got env write lock");
         let mut writer = env_lock.write().unwrap();
         trace!("writer: commit_internal got writer");
 
-        for (address, maybe_content) in staged_cas_data {
-            let result = maybe_content
-                .as_ref()
-                .map(|content| {
-                    trace!("add content with address {:?}: {:?}", address, content);
-                    self.cas_db.lmdb_add(&mut writer, content)
-                })
-                .unwrap_or_else(|| Ok(()));
-            if is_store_full_result(&result) {
-                drop(writer);
-                trace!("writer: commit_internal store full while adding cas data");
-                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                env_lock
-                    .set_map_size(map_size * map_growth_factor())
-                    .map_err(to_api_error)?;
-                return Ok(false);
-            }
-            result.map_err(to_api_error)?;
+        let copy_result = self
+            .staging_cas_db
+            .copy_all(&staging_reader, &self.cas_db, &mut writer);
+
+        if is_store_full_result(&copy_result) {
+            drop(writer);
+            trace!("writer: commit_internal store full while adding cas data");
+            let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+            env_lock
+                .set_map_size(map_size * map_growth_factor())
+                .map_err(to_api_error)?;
+            return Ok(false);
         }
+        copy_result.map_err(to_api_error)?;
 
         let staged_eav_data = self
             .staging_eav_db
