@@ -9,7 +9,7 @@ use crate::{
     error::*,
     reporting::{ReportStorage, StorageReport},
 };
-use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData};
+use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData, sync::Arc};
 use uuid::Uuid;
 
 /// Defines a transactional writer, typically implemented over a cursor.
@@ -19,12 +19,36 @@ pub trait Writer {
     fn commit(self) -> PersistenceResult<()>;
 }
 
+/// Defines a dynamic transactional writer. Useful for situations where
+/// the concrete database is abstracted over as a trait object.
+pub trait WriterDyn {
+    /// Commits the transaction. Returns a `PersistenceError` if the
+    /// transaction does not succeed.
+    fn commit(self: Box<Self>) -> PersistenceResult<()>;
+}
+
+impl<W: Writer> WriterDyn for W {
+    fn commit(self: Box<Self>) -> PersistenceResult<()> {
+        (*self).commit()
+    }
+}
+
 /// Cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
 pub trait Cursor<A: Attribute>:
     Writer + ContentAddressableStorage + EntityAttributeValueStorage<A>
 {
 }
+
+/// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
+/// by providing a `WriterDyn` across both of them. Useful for situations where
+/// the concrete database is abstracted over as a trait object.
+pub trait CursorDyn<A: Attribute>:
+    WriterDyn + ContentAddressableStorage + EntityAttributeValueStorage<A>
+{
+}
+
+impl<A: Attribute, C: Cursor<A>> CursorDyn<A> for C {}
 
 // TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> Cursor<A>);
@@ -177,6 +201,33 @@ pub trait CursorProvider<A: Attribute> {
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
 }
 
+/// Creates cursors over both EAV and CAS instances. May acquire read or write
+/// resources to do so, depending on implementation. A pure trait object version, allowing
+/// users to not care about the particular Cursor, CAS, or EAV implementation.
+///
+/// Some cursors may cascade over temporary (aka "scratch") databases to improve
+/// concurrency performance.
+///
+/// An advanced cursor might wrap other cursors and check external resources (such as peer data in a network)
+/// in addition to the cursors it wraps.
+///
+/// This provides a pure trait object style interface to a `CursorProvider`.
+pub trait CursorProviderDyn<A: Attribute> {
+    /// Creates a new boxed cursor object. Use carefully as one instance of a cursor
+    /// may block another, especially when cursors are mutating the primary store.
+    fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>>;
+}
+
+impl<A: Attribute, C: Cursor<A> + 'static, CP: CursorProvider<A, Cursor = C>> CursorProviderDyn<A>
+    for CP
+{
+    fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>> {
+        let cp: &CP = self;
+        let cursor = cp.create_cursor()?;
+        Ok(Box::new(cursor) as Box<dyn CursorDyn<A>>)
+    }
+}
+
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them both. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
@@ -190,6 +241,37 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn cas(&self) -> Self::Cas;
     /// Gets the EAV storage
     fn eav(&self) -> Self::Eav;
+}
+
+/// A high level api which brings together a CAS, EAV, and
+/// Cursor over them both. A cursor may start transactions over both
+/// the stores or not, depending on implementation. Differs from
+/// `PersistenceManager` trait removing the associated types and
+/// using trait objects strictly.
+pub trait PersistenceManagerDyn<'a, A: Attribute>: CursorProviderDyn<A> {
+    /// Gets the CAS storage.
+    fn cas(&self) -> Arc<dyn ContentAddressableStorage + 'a>;
+    /// Gets the EAV storage
+    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A> + 'a>;
+}
+
+impl<
+        'a,
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone + 'a,
+        EAV: EntityAttributeValueStorage<A> + Clone + 'a,
+        CP: CursorProvider<A> + 'a,
+    > PersistenceManagerDyn<'a, A> for DefaultPersistenceManager<A, CAS, EAV, CP>
+where
+    CP::Cursor: 'static,
+{
+    fn cas(&self) -> Arc<dyn ContentAddressableStorage + 'a> {
+        Arc::new(self.cas.clone())
+    }
+
+    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A> + 'a> {
+        Arc::new(self.eav.clone())
+    }
 }
 
 /// Provides a simple, extensable version of a persistence manager. Intended

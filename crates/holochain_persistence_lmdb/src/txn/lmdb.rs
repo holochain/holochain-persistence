@@ -541,7 +541,7 @@ pub mod tests {
     }
 
     #[test]
-    fn txn_cas_eav_test_transaction_abort() {
+    fn txn_lmdb_cas_eav_test_transaction_abort() {
         enable_logging_for_test(true);
         let entity_content = RawString::from("red").into();
         let attribute = ExampleAttribute::WithoutPayload;
@@ -557,5 +557,15 @@ pub mod tests {
                 attribute,
                 transient_content,
             );
+    }
+
+    #[test]
+    fn txn_lmdb_manager_can_be_cast_as_dyn() {
+        enable_logging_for_test(true);
+        let manager: LmdbManager<ExampleAttribute> = new_test_manager();
+        let manager_dyn: Box<dyn PersistenceManagerDyn<_>> = Box::new(manager);
+
+        let cursor = manager_dyn.create_cursor().unwrap();
+        assert!(cursor.commit().is_ok());
     }
 }
