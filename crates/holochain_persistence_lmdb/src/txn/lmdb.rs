@@ -206,7 +206,7 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
         let eavis = self.eav_db.fetch_eavi(query)?;
 
         for eavi in &eavis {
-            self.staging_cas_db.add(eavi)?;
+            self.staging_eav_db.add_eavi(eavi)?;
         }
         Ok(eavis)
     }
