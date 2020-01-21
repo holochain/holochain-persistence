@@ -54,7 +54,7 @@ impl<A: Attribute, C: Cursor<A>> CursorDyn<A> for C {}
 clone_trait_object!(<A:Attribute> Cursor<A>);
 
 /// A write that does nothing, for testing or for
-/// impementations that don't require the commit and abort functions
+/// implementations that don't require the commit and abort functions
 /// to do anything critical.
 #[derive(Clone)]
 pub struct NoopWriter;
@@ -229,7 +229,7 @@ impl<A: Attribute, C: Cursor<A> + 'static, CP: CursorProvider<A, Cursor = C>> Cu
 }
 
 /// A high level api which brings together a CAS, EAV, and
-/// Cursor over them both. A cursor may start transactions over both
+/// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
 pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     /// The type of Content Addressable Storage (CAS)
@@ -244,7 +244,7 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 }
 
 /// A high level api which brings together a CAS, EAV, and
-/// Cursor over them both. A cursor may start transactions over both
+/// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation. Differs from
 /// `PersistenceManager` trait removing the associated types and
 /// using trait objects strictly.
