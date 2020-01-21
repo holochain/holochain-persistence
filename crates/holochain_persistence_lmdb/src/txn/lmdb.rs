@@ -22,14 +22,14 @@ use std::{
 use uuid::Uuid;
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
-pub struct EnvCursor<A: Attribute> {
+pub struct LmdbCursor<A: Attribute> {
     cas_db: LmdbStorage,
     eav_db: EavLmdbStorage<A>,
     staging_cas_db: LmdbStorage,
     staging_eav_db: EavLmdbStorage<A>,
 }
 
-impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
+impl<A: Attribute + Sync + Send + DeserializeOwned> LmdbCursor<A> {
     /// Internal commit function which extracts `StoreError::MapFull` into the success value of
     /// a result where `true` indicates the commit is successful, and `false` means the map was
     /// full and retry is required with the newly allocated map size.
@@ -100,7 +100,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> EnvCursor<A> {
 }
 
 impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
-    for EnvCursor<A>
+    for LmdbCursor<A>
 {
     fn commit(self) -> PersistenceResult<()> {
         loop {
@@ -112,13 +112,13 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
     }
 }
 
-impl<A: Attribute> ReportStorage for EnvCursor<A> {
+impl<A: Attribute> ReportStorage for LmdbCursor<A> {
     fn get_storage_report(&self) -> PersistenceResult<StorageReport> {
         self.cas_db.get_storage_report()
     }
 }
 
-impl<A: Attribute> EnvCursor<A> {
+impl<A: Attribute> LmdbCursor<A> {
     pub fn new(
         cas_db: LmdbStorage,
         eav_db: EavLmdbStorage<A>,
@@ -134,7 +134,7 @@ impl<A: Attribute> EnvCursor<A> {
     }
 }
 
-impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
+impl<A: Attribute> ContentAddressableStorage for LmdbCursor<A> {
     /// Adds `content` only to the staging CAS database. Use `commit()` to write to the
     /// primary.
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
@@ -179,7 +179,7 @@ impl<A: Attribute> ContentAddressableStorage for EnvCursor<A> {
     }
 }
 
-impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> for EnvCursor<A> {
+impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> for LmdbCursor<A> {
     /// Adds `content` only to the staging EAVI database. Use `commit()` to write to the
     /// primary.
     fn add_eavi(
@@ -212,7 +212,7 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
     }
 }
 
-impl<A: Attribute + DeserializeOwned> Cursor<A> for EnvCursor<A> {}
+impl<A: Attribute + DeserializeOwned> Cursor<A> for LmdbCursor<A> {}
 
 #[derive(Clone)]
 pub struct LmdbCursorProvider<A: Attribute> {
@@ -239,7 +239,7 @@ const STAGING_CAS_BUCKET: &str = "staging_cas";
 const STAGING_EAV_BUCKET: &str = "staging_eav";
 
 impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A> {
-    type Cursor = EnvCursor<A>;
+    type Cursor = LmdbCursor<A>;
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
         let db_names = vec![STAGING_CAS_BUCKET, STAGING_EAV_BUCKET];
 
@@ -276,7 +276,7 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
                 .clone(),
         );
 
-        Ok(EnvCursor::new(
+        Ok(LmdbCursor::new(
             self.cas_db.clone(),
             self.eav_db.clone(),
             staging_cas_db,
