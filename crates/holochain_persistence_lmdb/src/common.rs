@@ -31,10 +31,10 @@ impl LmdbInstance {
     pub fn new<P: AsRef<Path> + Clone>(
         db_name: &str,
         path: P,
-        initial_map_bytes: Option<usize>,
+        initial_map_size: Option<usize>,
         flags: Option<EnvironmentFlags>,
     ) -> LmdbInstance {
-        Self::new_all(&[db_name], path, initial_map_bytes, flags, None)
+        Self::new_all(&[db_name], path, initial_map_size, flags, None)
             .into_iter()
             .next()
             .map(|(_db_name, instance)| instance)

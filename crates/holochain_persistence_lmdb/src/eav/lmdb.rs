@@ -28,13 +28,13 @@ pub struct EavLmdbStorage<A: Attribute> {
 impl<A: Attribute> EavLmdbStorage<A> {
     pub fn new<P: AsRef<Path> + Clone>(
         db_path: P,
-        initial_map_bytes: Option<usize>,
+        initial_map_size: Option<usize>,
         env_flags: Option<EnvironmentFlags>,
     ) -> EavLmdbStorage<A> {
         Self::wrap(LmdbInstance::new(
             EAV_BUCKET,
             db_path,
-            initial_map_bytes,
+            initial_map_size,
             env_flags,
         ))
     }

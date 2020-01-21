@@ -35,13 +35,13 @@ impl Debug for LmdbStorage {
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(
         db_path: P,
-        initial_map_bytes: Option<usize>,
+        initial_map_size: Option<usize>,
         env_flags: Option<EnvironmentFlags>,
     ) -> Self {
         Self::wrap(LmdbInstance::new(
             CAS_BUCKET,
             db_path,
-            initial_map_bytes,
+            initial_map_size,
             env_flags,
         ))
     }
