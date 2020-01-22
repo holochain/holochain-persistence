@@ -248,28 +248,27 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 /// the stores or not, depending on implementation. Differs from
 /// `PersistenceManager` trait removing the associated types and
 /// using trait objects strictly.
-pub trait PersistenceManagerDyn<'a, A: Attribute>: CursorProviderDyn<A> {
+pub trait PersistenceManagerDyn<A: Attribute>: CursorProviderDyn<A> {
     /// Gets the CAS storage.
-    fn cas(&self) -> Arc<dyn ContentAddressableStorage + 'a>;
+    fn cas(&self) -> Arc<dyn ContentAddressableStorage>;
     /// Gets the EAV storage
-    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A> + 'a>;
+    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A>>;
 }
 
 impl<
-        'a,
         A: Attribute,
-        CAS: ContentAddressableStorage + Clone + 'a,
-        EAV: EntityAttributeValueStorage<A> + Clone + 'a,
-        CP: CursorProvider<A> + 'a,
-    > PersistenceManagerDyn<'a, A> for DefaultPersistenceManager<A, CAS, EAV, CP>
+        CAS: ContentAddressableStorage + Clone + 'static,
+        EAV: EntityAttributeValueStorage<A> + Clone + 'static,
+        CP: CursorProvider<A> + 'static,
+    > PersistenceManagerDyn<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 where
     CP::Cursor: 'static,
 {
-    fn cas(&self) -> Arc<dyn ContentAddressableStorage + 'a> {
+    fn cas(&self) -> Arc<dyn ContentAddressableStorage> {
         Arc::new(self.cas.clone())
     }
 
-    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A> + 'a> {
+    fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A>> {
         Arc::new(self.eav.clone())
     }
 }
