@@ -375,7 +375,7 @@ pub mod tests {
             None,
         )
     }
-    
+
     #[test]
     fn txn_lmdb_cas_round_trip() {
         enable_logging_for_test(true);
