@@ -288,11 +288,7 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
 pub type LmdbManager<A> =
     DefaultPersistenceManager<A, LmdbStorage, EavLmdbStorage<A>, LmdbCursorProvider<A>>;
 
-pub fn new_manager<
-    A: Attribute + DeserializeOwned,
-    EP: AsRef<Path> + Clone,
-    SP: AsRef<Path> + Clone,
->(
+pub fn new_manager<A: Attribute + DeserializeOwned, EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
     env_path: EP,
     staging_path_prefix: Option<SP>,
     initial_map_size: Option<usize>,
@@ -369,11 +365,10 @@ pub mod tests {
     fn new_test_manager<A: Attribute + serde::de::DeserializeOwned>() -> super::LmdbManager<A> {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
-        let staging_temp_path =
-            String::from(temp.path().to_str().expect("temp dir could not be string"));
+        let staging_path: Option<String> = None;
         super::new_manager(
             temp_path,
-            staging_temp_path.into(),
+            staging_path,
             Some(1024 * 1024),
             None,
             Some(1024 * 1024),
