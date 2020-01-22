@@ -214,7 +214,7 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
 
 impl<A: Attribute + DeserializeOwned> Cursor<A> for LmdbCursor<A> {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LmdbCursorProvider<A: Attribute> {
     /// Primary CAS lmdb store
     cas_db: LmdbStorage,

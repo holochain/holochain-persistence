@@ -212,14 +212,17 @@ pub trait CursorProvider<A: Attribute> {
 /// in addition to the cursors it wraps.
 ///
 /// This provides a pure trait object style interface to a `CursorProvider`.
-pub trait CursorProviderDyn<A: Attribute>: Send + Sync {
+pub trait CursorProviderDyn<A: Attribute>: Send + Sync + Debug {
     /// Creates a new boxed cursor object. Use carefully as one instance of a cursor
     /// may block another, especially when cursors are mutating the primary store.
     fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>>;
 }
 
-impl<A: Attribute, C: Cursor<A> + 'static, CP: CursorProvider<A, Cursor = C> + Send + Sync>
-    CursorProviderDyn<A> for CP
+impl<
+        A: Attribute,
+        C: Cursor<A> + 'static,
+        CP: CursorProvider<A, Cursor = C> + Send + Sync + Debug,
+    > CursorProviderDyn<A> for CP
 {
     fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>> {
         let cp: &CP = self;
@@ -241,6 +244,8 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn cas(&self) -> Self::Cas;
     /// Gets the EAV storage
     fn eav(&self) -> Self::Eav;
+
+    fn get_id(&self) -> Uuid;
 }
 
 /// A high level api which brings together a CAS, EAV, and
@@ -259,7 +264,7 @@ impl<
         A: Attribute,
         CAS: ContentAddressableStorage + Clone + 'static,
         EAV: EntityAttributeValueStorage<A> + Clone + 'static,
-        CP: CursorProvider<A> + 'static + Send + Sync,
+        CP: CursorProvider<A> + 'static + Send + Sync + Debug,
     > PersistenceManagerDyn<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 where
     CP::Cursor: 'static,
@@ -275,7 +280,7 @@ where
 
 /// Provides a simple, extensable version of a persistence manager. Intended
 /// to be specialized for a particular database implementation easily.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DefaultPersistenceManager<
     A: Attribute,
     CAS: ContentAddressableStorage + Clone,
@@ -346,6 +351,10 @@ impl<
 
     fn cas(&self) -> Self::Cas {
         self.cas.clone()
+    }
+
+    fn get_id(&self) -> Uuid {
+        self.cas.get_id()
     }
 }
 
