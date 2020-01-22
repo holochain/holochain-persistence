@@ -375,15 +375,7 @@ pub mod tests {
             None,
         )
     }
-    /*
-        fn new_test_suite<A:Attribute+Clone, CP:CursorProvider<A>+Clone, TCP: CursorProvider<ExampleLink>+Clone>() -> PersistenceManagerTestSuite<A, CP, TCP> where CP::Cursor: Clone, TCP::Cursor: Clone
-     {
-                let manager = new_test_manager();
-                let tombstone_manager = new_test_manager();
-                let test_suite = PersistenceManagerTestSuite::new(manager, tombstone_manager);
-                test_suite
-        }
-    */
+    
     #[test]
     fn txn_lmdb_cas_round_trip() {
         enable_logging_for_test(true);

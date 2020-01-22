@@ -5,7 +5,7 @@ use holochain_persistence_api::{
 
 use crate::{cas::pickle::PickleStorage, eav::pickle::EavPickleStorage};
 use serde::de::DeserializeOwned;
-use std::path::Path;
+use std::{convert::TryFrom, path::Path};
 
 pub type PickleManager<A> = DefaultPersistenceManager<
     A,
@@ -17,7 +17,7 @@ pub type PickleManager<A> = DefaultPersistenceManager<
 /// Creates non transactional persistence manager for a pickle db
 /// backed database. Cursors are *not* atomic.
 pub fn new_manager<
-    A: Attribute + DeserializeOwned + From<String> + std::fmt::Display,
+    A: Attribute + DeserializeOwned + TryFrom<String> + std::fmt::Display,
     P: AsRef<Path> + Clone,
     EP: AsRef<Path> + Clone,
 >(
