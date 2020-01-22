@@ -294,7 +294,7 @@ pub fn new_manager<
     SP: AsRef<Path> + Clone,
 >(
     env_path: EP,
-    staging_path_prefix: SP,
+    staging_path_prefix: Option<SP>,
     initial_map_size: Option<usize>,
     env_flags: Option<EnvironmentFlags>,
     staging_initial_map_size: Option<usize>,
@@ -320,10 +320,14 @@ pub fn new_manager<
     let eav_db: EavLmdbStorage<A> =
         EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap().clone());
 
+    let staging_path_prefix = staging_path_prefix
+        .map(|p| p.as_ref().to_path_buf())
+        .unwrap_or_else(|| std::env::temp_dir());
+
     let cursor_provider = LmdbCursorProvider {
         cas_db: cas_db.clone(),
         eav_db: eav_db.clone(),
-        staging_path_prefix: staging_path_prefix.as_ref().to_path_buf(),
+        staging_path_prefix,
         staging_initial_map_size,
         staging_env_flags,
     };
