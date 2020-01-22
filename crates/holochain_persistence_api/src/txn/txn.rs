@@ -258,6 +258,8 @@ pub trait PersistenceManagerDyn<A: Attribute>: CursorProviderDyn<A> {
     fn cas(&self) -> Arc<dyn ContentAddressableStorage>;
     /// Gets the EAV storage
     fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A>>;
+
+    fn get_id(&self) -> Uuid;
 }
 
 impl<
@@ -275,6 +277,10 @@ where
 
     fn eav(&self) -> Arc<dyn EntityAttributeValueStorage<A>> {
         Arc::new(self.eav.clone())
+    }
+
+    fn get_id(&self) -> Uuid {
+        PersistenceManager::get_id(self)
     }
 }
 
