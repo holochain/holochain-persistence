@@ -373,7 +373,7 @@ pub mod tests {
             String::from(temp.path().to_str().expect("temp dir could not be string"));
         super::new_manager(
             temp_path,
-            staging_temp_path,
+            staging_temp_path.into(),
             Some(1024 * 1024),
             None,
             Some(1024 * 1024),

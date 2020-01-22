@@ -6,7 +6,7 @@ use holochain_persistence_api::{
 };
 
 use serde::de::DeserializeOwned;
-use std::path::Path;
+use std::{convert::TryFrom, path::Path};
 
 use crate::{cas::file::FilesystemStorage, eav::file::EavFileStorage};
 
@@ -22,8 +22,8 @@ pub type FilesystemManager<A> = DefaultPersistenceManager<
 pub fn new_manager<
     A: Attribute
         + DeserializeOwned
-        + From<JsonString>
-        + From<String>
+        + TryFrom<JsonString>
+        + TryFrom<String>
         + Into<JsonString>
         + std::fmt::Display,
     P: AsRef<Path> + Clone,
