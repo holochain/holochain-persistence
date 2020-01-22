@@ -378,6 +378,30 @@ impl<
     }
 }
 
+use crate::{
+    cas::storage::ExampleContentAddressableStorage, eav::ExampleEntityAttributeValueStorage,
+};
+
+pub type ExamplePersistenceManager<A> = DefaultPersistenceManager<
+    A,
+    ExampleContentAddressableStorage,
+    ExampleEntityAttributeValueStorage<A>,
+    NonTransactionalCursor<
+        A,
+        ExampleContentAddressableStorage,
+        ExampleEntityAttributeValueStorage<A>,
+    >,
+>;
+
+pub fn new_example_persistence_manager<A: Attribute + Default>(
+) -> PersistenceResult<ExamplePersistenceManager<A>> {
+    let cas = ExampleContentAddressableStorage::new()?;
+    let eav = ExampleEntityAttributeValueStorage::new();
+    let cursor_provider = NonTransactionalCursor::new(cas.clone(), eav.clone());
+
+    Ok(DefaultPersistenceManager::new(cas, eav, cursor_provider))
+}
+
 pub struct PersistenceManagerTestSuite<
     A: Attribute + Clone,
     CP: CursorProvider<A> + Clone + 'static,
