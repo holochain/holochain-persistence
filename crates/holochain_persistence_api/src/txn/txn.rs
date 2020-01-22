@@ -212,13 +212,13 @@ pub trait CursorProvider<A: Attribute> {
 /// in addition to the cursors it wraps.
 ///
 /// This provides a pure trait object style interface to a `CursorProvider`.
-pub trait CursorProviderDyn<A: Attribute> {
+pub trait CursorProviderDyn<A: Attribute> : Send + Sync {
     /// Creates a new boxed cursor object. Use carefully as one instance of a cursor
     /// may block another, especially when cursors are mutating the primary store.
     fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>>;
 }
 
-impl<A: Attribute, C: Cursor<A> + 'static, CP: CursorProvider<A, Cursor = C>> CursorProviderDyn<A>
+impl<A: Attribute, C: Cursor<A> + 'static, CP: CursorProvider<A, Cursor = C>+Send+Sync> CursorProviderDyn<A>
     for CP
 {
     fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>> {
@@ -259,7 +259,7 @@ impl<
         A: Attribute,
         CAS: ContentAddressableStorage + Clone + 'static,
         EAV: EntityAttributeValueStorage<A> + Clone + 'static,
-        CP: CursorProvider<A> + 'static,
+        CP: CursorProvider<A> + 'static + Send +Sync,
     > PersistenceManagerDyn<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 where
     CP::Cursor: 'static,
