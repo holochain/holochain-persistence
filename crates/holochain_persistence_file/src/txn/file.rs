@@ -86,8 +86,6 @@ mod tests {
 
     #[test]
     fn can_create_default_file_persistence_manager() {
-        let _default : FilesystemManager<ExampleAttribute> =
-            FilesystemManager::default();
+        let _default: FilesystemManager<ExampleAttribute> = FilesystemManager::default();
     }
-
 }
