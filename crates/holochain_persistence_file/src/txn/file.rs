@@ -29,12 +29,11 @@ pub fn default_manager<
     let base_path = base_path.path();
     let cas_path = base_path.join("cas");
     let eav_path = base_path.join("eav");
-    new_manager(cas_path.clone(), eav_path.clone()).expect(
-        format!(
-            "Failed to create CAS/EAV file storage using temporary path locations: {:?}, {:?}",
-            cas_path, eav_path
+    new_manager(cas_path.clone(), eav_path.clone()).unwrap_or_else(|e|
+        panic!(
+            "Failed to create CAS/EAV file storage using temporary path locations: {:?}, {:?}, {:?}",
+            cas_path, eav_path, e
         )
-        .as_str(),
     )
 }
 
