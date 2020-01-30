@@ -41,17 +41,17 @@ impl<W: Writer> WriterDyn for W {
 }
 
 /// Cursor interface over both CAS and EAV databases.
-pub trait Cursor<A: Attribute>: ContentAddressableStorage + EntityAttributeValueStorage<A> {}
+pub trait Cursor<A: Attribute>: FetchContent + FetchEavi<A> + HasUuid {}
 
 /// Writeable cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
-pub trait CursorRw<A: Attribute>: Writer + Cursor<A> {}
+pub trait CursorRw<A: Attribute>: Writer + Cursor<A> + AddContent + AddEavi<A> {}
 
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
 pub trait CursorRwDyn<A: Attribute>: Cursor<A> + WriterDyn {}
-impl<A: Attribute, C: Cursor<A> + Writer> CursorRw<A> for C {}
+impl<A: Attribute, C: Cursor<A> + Writer + AddContent + AddEavi<A>> CursorRw<A> for C {}
 
 impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
 
@@ -624,7 +624,7 @@ where
             assert_eq!(cursor.fetch_eavi(&eavi_query).unwrap().len(), 1);
         });
 
-        let cursor_result = self.cursor_provider.create_cursor();
+        let cursor_result = self.cursor_provider.create_cursor_rw();
         assert!(
             cursor_result.is_ok(),
             format!(
