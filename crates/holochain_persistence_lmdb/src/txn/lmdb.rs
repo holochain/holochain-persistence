@@ -185,7 +185,7 @@ impl<A: Attribute> HasUuid for LmdbCursor<A> {
     }
 }
 
-impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> for LmdbCursor<A> {
+impl<A: Attribute + serde::de::DeserializeOwned> AddEavi<A> for LmdbCursor<A> {
     /// Adds `content` only to the staging EAVI database. Use `commit()` to write to the
     /// primary.
     fn add_eavi(
@@ -196,7 +196,9 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
             .resizable_add_lmdb_eavi(eav)
             .map_err(to_api_error)
     }
+}
 
+impl<A: Attribute + serde::de::DeserializeOwned> FetchEavi<A> for LmdbCursor<A> {
     /// First query the staging EAVI database, then the primary. Cache the results from the
     /// primary into the staging database.
     fn fetch_eavi(
@@ -352,9 +354,7 @@ pub mod tests {
             content::{AddressableContent, ExampleAddressableContent},
             storage::ExampleLink,
         },
-        eav::{
-            Attribute, EntityAttributeValueIndex, EntityAttributeValueStorage, ExampleAttribute,
-        },
+        eav::{AddEavi, Attribute, EntityAttributeValueIndex, ExampleAttribute},
         txn::*,
     };
     use tempfile::tempdir;

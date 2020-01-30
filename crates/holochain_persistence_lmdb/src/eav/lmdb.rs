@@ -1,9 +1,7 @@
 use crate::common::LmdbInstance;
 use holochain_persistence_api::{
     cas::content::AddressableContent,
-    eav::{
-        Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage,
-    },
+    eav::{AddEavi, Attribute, EavFilter, EaviQuery, EntityAttributeValueIndex, FetchEavi},
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
@@ -178,7 +176,7 @@ where
     }
 }
 
-impl<A: Attribute> EntityAttributeValueStorage<A> for EavLmdbStorage<A>
+impl<A: Attribute> AddEavi<A> for EavLmdbStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
@@ -189,7 +187,12 @@ where
         self.resizable_add_lmdb_eavi(eav)
             .map_err(|e| PersistenceError::from(format!("EAV add error: {}", e)))
     }
+}
 
+impl<A: Attribute> FetchEavi<A> for EavLmdbStorage<A>
+where
+    A: Sync + Send + serde::de::DeserializeOwned,
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,

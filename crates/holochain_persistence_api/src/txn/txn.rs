@@ -11,6 +11,7 @@ use crate::{
             AddContent, ContentAddressableStorage, EavTestSuite, FetchContent, StorageTestSuite,
         },
     },
+    eav::storage::{AddEavi, FetchEavi},
     eav::*,
     error::*,
     reporting::{ReportStorage, StorageReport},
@@ -145,7 +146,7 @@ impl<
         A: Attribute,
         CAS: ContentAddressableStorage + Clone,
         EAV: EntityAttributeValueStorage<A> + Clone,
-    > EntityAttributeValueStorage<A> for NonTransactionalCursor<A, CAS, EAV>
+    > AddEavi<A> for NonTransactionalCursor<A, CAS, EAV>
 {
     fn add_eavi(
         &self,
@@ -153,7 +154,14 @@ impl<
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         self.eav.add_eavi(eavi)
     }
+}
 
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > FetchEavi<A> for NonTransactionalCursor<A, CAS, EAV>
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,

@@ -11,7 +11,7 @@ use crate::{
 use chrono::offset::Utc;
 use eav::{
     query::{EaviQuery, IndexFilter},
-    storage::{EntityAttributeValueStorage, ExampleEntityAttributeValueStorage},
+    storage::{AddEavi, ExampleEntityAttributeValueStorage, FetchEavi},
 };
 use holochain_json_api::{
     error::{JsonError, JsonResult},
