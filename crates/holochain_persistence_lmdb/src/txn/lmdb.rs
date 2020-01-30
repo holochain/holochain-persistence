@@ -9,6 +9,7 @@ use holochain_persistence_api::{
     cas::{content::*, storage::*},
     eav::*,
     error::*,
+    has_uuid::HasUuid,
     reporting::{ReportStorage, StorageReport},
     txn::{Cursor, CursorProvider, DefaultPersistenceManager},
 };
@@ -20,6 +21,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
+
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct LmdbCursor<A: Attribute> {
@@ -134,13 +136,15 @@ impl<A: Attribute> LmdbCursor<A> {
     }
 }
 
-impl<A: Attribute> ContentAddressableStorage for LmdbCursor<A> {
+impl<A: Attribute> AddContent for LmdbCursor<A> {
     /// Adds `content` only to the staging CAS database. Use `commit()` to write to the
     /// primary.
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.staging_cas_db.add(content)
     }
+}
 
+impl<A: Attribute> FetchContent for LmdbCursor<A> {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         self.fetch(address)
             .map(|maybe_content| maybe_content.is_some())
@@ -173,7 +177,9 @@ impl<A: Attribute> ContentAddressableStorage for LmdbCursor<A> {
             Ok(None)
         }
     }
+}
 
+impl<A: Attribute> HasUuid for LmdbCursor<A> {
     fn get_id(&self) -> uuid::Uuid {
         self.cas_db.get_id()
     }
@@ -240,7 +246,8 @@ const STAGING_EAV_BUCKET: &str = "staging_eav";
 
 impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A> {
     type Cursor = LmdbCursor<A>;
-    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+    type CursorRw = LmdbCursor<A>;
+    fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw> {
         let db_names = vec![STAGING_CAS_BUCKET, STAGING_EAV_BUCKET];
 
         let mut staging_path = self.staging_path_prefix.clone();
@@ -282,6 +289,10 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
             staging_cas_db,
             staging_eav_db,
         ))
+    }
+
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        self.create_cursor_rw()
     }
 }
 
@@ -339,7 +350,7 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{ContentAddressableStorage, ExampleLink},
+            storage::ExampleLink,
         },
         eav::{
             Attribute, EntityAttributeValueIndex, EntityAttributeValueStorage, ExampleAttribute,
@@ -556,7 +567,7 @@ pub mod tests {
         let manager: LmdbManager<ExampleAttribute> = new_test_manager();
         let manager_dyn: Box<dyn PersistenceManagerDyn<_>> = Box::new(manager);
 
-        let cursor = manager_dyn.create_cursor().unwrap();
+        let cursor = manager_dyn.create_cursor_rw().unwrap();
         assert!(cursor.commit().is_ok());
     }
 }
