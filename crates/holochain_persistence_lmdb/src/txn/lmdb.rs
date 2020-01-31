@@ -566,8 +566,19 @@ pub mod tests {
         enable_logging_for_test(true);
         let manager: LmdbManager<ExampleAttribute> = new_test_manager();
         let manager_dyn: Box<dyn PersistenceManagerDyn<_>> = Box::new(manager);
+        let data: Vec<u8> = Vec::from(format!("{}", "abc").as_bytes());
+
+        let entity_content: Content = RawString::from("red").into();
+        let eavi = EntityAttributeValueIndex::new(
+            &holochain_persistence_api::hash::HashString::from(data.clone()),
+            &ExampleAttribute::WithoutPayload,
+            &data.into(),
+        )
+        .unwrap();
 
         let cursor = manager_dyn.create_cursor_rw().unwrap();
+        assert!(cursor.add(&entity_content).is_ok());
+        assert!(cursor.add_eavi(&eavi).is_ok());
         assert!(cursor.commit().is_ok());
     }
 }

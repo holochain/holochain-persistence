@@ -50,7 +50,7 @@ pub trait CursorRw<A: Attribute>: Writer + Cursor<A> + AddContent + AddEavi<A> {
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
-pub trait CursorRwDyn<A: Attribute>: Cursor<A> + WriterDyn {}
+pub trait CursorRwDyn<A: Attribute>: CursorRw<A> + WriterDyn {}
 impl<A: Attribute, C: Cursor<A> + Writer + AddContent + AddEavi<A>> CursorRw<A> for C {}
 
 impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
