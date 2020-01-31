@@ -318,8 +318,6 @@ impl TryFrom<String> for ExampleLink {
     }
 }
 
-impl Attribute for ExampleLink {}
-
 impl EavTestSuite {
     pub fn test_round_trip<A: Attribute>(
         eav_storage: impl EntityAttributeValueStorage<A> + Clone,
