@@ -273,19 +273,45 @@ lazy_static! {
         Regex::new(r"^link__(.*)__(.*)$").expect("This string literal is a valid regex");
     static ref REMOVED_LINK_REGEX: Regex =
         Regex::new(r"^removed_link__(.*)__(.*)$").expect("This string literal is a valid regex");
+    static ref NONE_ERR: PersistenceError =
+        PersistenceError::ErrorGeneric("Expected Some and got None".to_string());
 }
 
 impl TryFrom<&str> for ExampleLink {
     type Error = PersistenceError;
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         if LINK_REGEX.is_match(s) {
-            let link_type = LINK_REGEX.captures(s)?.get(1)?.as_str().to_string();
-            let link_tag = LINK_REGEX.captures(s)?.get(2)?.as_str().to_string();
+            let link_type = LINK_REGEX
+                .captures(s)
+                .ok_or(NONE_ERR.clone())?
+                .get(1)
+                .ok_or(NONE_ERR.clone())?
+                .as_str()
+                .to_string();
+            let link_tag = LINK_REGEX
+                .captures(s)
+                .ok_or(NONE_ERR.clone())?
+                .get(2)
+                .ok_or(NONE_ERR.clone())?
+                .as_str()
+                .to_string();
 
             Ok(ExampleLink::LinkTag(link_type, link_tag))
         } else if REMOVED_LINK_REGEX.is_match(s) {
-            let link_type = REMOVED_LINK_REGEX.captures(s)?.get(1)?.as_str().to_string();
-            let link_tag = REMOVED_LINK_REGEX.captures(s)?.get(2)?.as_str().to_string();
+            let link_type = REMOVED_LINK_REGEX
+                .captures(s)
+                .ok_or(NONE_ERR.clone())?
+                .get(1)
+                .ok_or(NONE_ERR.clone())?
+                .as_str()
+                .to_string();
+            let link_tag = REMOVED_LINK_REGEX
+                .captures(s)
+                .ok_or(NONE_ERR.clone())?
+                .get(2)
+                .ok_or(NONE_ERR.clone())?
+                .as_str()
+                .to_string();
             Ok(ExampleLink::RemovedLink(link_type, link_tag))
         } else {
             Err(PersistenceError::SerializationError(format!(

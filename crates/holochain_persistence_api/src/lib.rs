@@ -1,8 +1,6 @@
 //! Holochain Persistence Api
 //! This crate defines apis for a content addressable storage (cas) and a generic
 //! entity attribute value index (eavi).
-#![feature(try_trait)]
-#![feature(never_type)]
 #![warn(unused_extern_crates)]
 #![feature(test)]
 extern crate test;

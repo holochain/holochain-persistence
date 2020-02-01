@@ -23,7 +23,6 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::{Debug, Display, Formatter},
     hash::Hash,
-    option::NoneError,
 };
 
 /// Address of AddressableContent representing the EAV entity
@@ -82,11 +81,6 @@ impl From<AttributeError> for JsonError {
             }
         };
         JsonError::ErrorGeneric(msg)
-    }
-}
-impl From<NoneError> for AttributeError {
-    fn from(_: NoneError) -> AttributeError {
-        AttributeError::ParseError
     }
 }
 

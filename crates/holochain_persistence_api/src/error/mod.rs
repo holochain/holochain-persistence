@@ -8,7 +8,6 @@ use std::{
     error::Error,
     fmt,
     io::{self, Error as IoError},
-    option::NoneError,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -113,12 +112,6 @@ impl From<std::str::Utf8Error> for PersistenceError {
 impl From<FutureCanceled> for PersistenceError {
     fn from(_: FutureCanceled) -> Self {
         PersistenceError::ErrorGeneric("Failed future".to_string())
-    }
-}
-
-impl From<NoneError> for PersistenceError {
-    fn from(_: NoneError) -> Self {
-        PersistenceError::ErrorGeneric("Expected Some and got None".to_string())
     }
 }
 
