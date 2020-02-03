@@ -334,7 +334,7 @@ where
 
 /// Provides a simple, extensable version of a persistence manager. Intended
 /// to be specialized for a particular database implementation easily.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DefaultPersistenceManager<
     A: Attribute,
     CAS: ContentAddressableStorage + Clone,
