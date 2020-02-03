@@ -2,12 +2,13 @@ use holochain_json_api::error::JsonError;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{AddContent, FetchContent},
     },
     error::PersistenceResult,
     reporting::{ReportStorage, StorageReport},
 };
 
+use holochain_persistence_api::has_uuid::HasUuid;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use std::{
     fmt::{Debug, Error, Formatter},
@@ -56,7 +57,7 @@ impl PickleStorage {
     }
 }
 
-impl ContentAddressableStorage for PickleStorage {
+impl AddContent for PickleStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let mut inner = self.db.write().unwrap();
 
@@ -66,7 +67,8 @@ impl ContentAddressableStorage for PickleStorage {
 
         Ok(())
     }
-
+}
+impl FetchContent for PickleStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         let inner = self.db.read().unwrap();
 
@@ -78,7 +80,9 @@ impl ContentAddressableStorage for PickleStorage {
 
         Ok(inner.get(&address.to_string()))
     }
+}
 
+impl HasUuid for PickleStorage {
     fn get_id(&self) -> Uuid {
         self.id
     }
@@ -102,7 +106,7 @@ mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
+            storage::{AddContent, CasBencher, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };

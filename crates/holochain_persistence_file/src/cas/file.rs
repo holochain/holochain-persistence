@@ -2,7 +2,7 @@ use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{AddContent, FetchContent},
     },
     error::PersistenceResult,
     reporting::ReportStorage,
@@ -14,6 +14,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use holochain_persistence_api::has_uuid::HasUuid;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -51,7 +52,7 @@ impl FilesystemStorage {
     }
 }
 
-impl ContentAddressableStorage for FilesystemStorage {
+impl AddContent for FilesystemStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let _guard = self.lock.write()?;
         // @TODO be more efficient here
@@ -65,7 +66,8 @@ impl ContentAddressableStorage for FilesystemStorage {
 
         Ok(())
     }
-
+}
+impl FetchContent for FilesystemStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         let _guard = self.lock.read()?;
         Ok(Path::new(&self.address_to_path(address)).is_file())
@@ -81,7 +83,9 @@ impl ContentAddressableStorage for FilesystemStorage {
             Ok(None)
         }
     }
+}
 
+impl HasUuid for FilesystemStorage {
     fn get_id(&self) -> Uuid {
         self.id
     }

@@ -6,7 +6,7 @@ use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{AddContent, FetchContent},
     },
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
@@ -17,6 +17,8 @@ use std::{
     path::Path,
 };
 use uuid::Uuid;
+
+use holochain_persistence_api::has_uuid::HasUuid;
 
 pub const CAS_BUCKET: &str = "cas";
 
@@ -122,12 +124,14 @@ impl LmdbStorage {
     }
 }
 
-impl ContentAddressableStorage for LmdbStorage {
+impl AddContent for LmdbStorage {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.lmdb_resizable_add(content)
             .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
     }
+}
 
+impl FetchContent for LmdbStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         let rkv = self.lmdb.rkv().read().unwrap();
         let reader: rkv::Reader = rkv.read().map_err(to_api_error)?;
@@ -147,7 +151,9 @@ impl ContentAddressableStorage for LmdbStorage {
         self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
     }
+}
 
+impl HasUuid for LmdbStorage {
     fn get_id(&self) -> Uuid {
         self.id
     }
@@ -166,7 +172,7 @@ mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
+            storage::{AddContent, CasBencher, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };

@@ -1,7 +1,7 @@
 use holochain_json_api::error::JsonError;
 use holochain_persistence_api::{
     cas::content::AddressableContent,
-    eav::{Attribute, EaviQuery, EntityAttributeValueIndex, EntityAttributeValueStorage},
+    eav::{AddEavi, Attribute, EaviQuery, EntityAttributeValueIndex, FetchEavi},
     error::PersistenceResult,
     reporting::{ReportStorage, StorageReport},
 };
@@ -57,7 +57,7 @@ impl<A: Attribute> Debug for EavPickleStorage<A> {
     }
 }
 
-impl<A: Attribute> EntityAttributeValueStorage<A> for EavPickleStorage<A>
+impl<A: Attribute> AddEavi<A> for EavPickleStorage<A>
 where
     A: Sync + Send + serde::de::DeserializeOwned,
 {
@@ -82,7 +82,12 @@ where
             .map_err(|e| JsonError::ErrorGeneric(e.to_string()))?;
         Ok(Some(new_eav))
     }
+}
 
+impl<A: Attribute> FetchEavi<A> for EavPickleStorage<A>
+where
+    A: Sync + Send + serde::de::DeserializeOwned,
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,

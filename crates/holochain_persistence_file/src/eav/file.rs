@@ -6,8 +6,8 @@ use holochain_json_api::{
 use holochain_persistence_api::{
     cas::content::AddressableContent,
     eav::{
-        Attribute, EavFilter, EaviQuery, Entity, EntityAttributeValueIndex,
-        EntityAttributeValueStorage, Value,
+        AddEavi, Attribute, EavFilter, EaviQuery, Entity, EntityAttributeValueIndex, FetchEavi,
+        Value,
     },
     error::{PersistenceError, PersistenceResult},
     reporting::ReportStorage,
@@ -159,7 +159,7 @@ where
     }
 }
 
-impl<A: Attribute> EntityAttributeValueStorage<A> for EavFileStorage<A>
+impl<A: Attribute> AddEavi<A> for EavFileStorage<A>
 where
     A: std::string::ToString
         + TryFrom<String>
@@ -198,7 +198,19 @@ where
             .map(|_| Some(eav.clone()))
             .map_err(|err| err.into())
     }
+}
 
+impl<A: Attribute> FetchEavi<A> for EavFileStorage<A>
+where
+    A: std::string::ToString
+        + TryFrom<String>
+        + Sync
+        + Send
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + TryFrom<JsonString>
+        + Into<JsonString>,
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,

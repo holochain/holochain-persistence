@@ -11,7 +11,7 @@ use crate::{
 use chrono::offset::Utc;
 use eav::{
     query::{EaviQuery, IndexFilter},
-    storage::{EntityAttributeValueStorage, ExampleEntityAttributeValueStorage},
+    storage::{AddEavi, ExampleEntityAttributeValueStorage, FetchEavi},
 };
 use holochain_json_api::{
     error::{JsonError, JsonResult},
@@ -37,6 +37,10 @@ pub trait Attribute:
 {
 }
 
+impl<A: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send>
+    Attribute for A
+{
+}
 #[derive(PartialEq, Eq, PartialOrd, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson)]
 pub enum ExampleAttribute {
     WithoutPayload,
@@ -68,7 +72,6 @@ impl From<String> for ExampleAttribute {
         }
     }
 }
-impl Attribute for ExampleAttribute {}
 
 #[derive(PartialEq, Debug)]
 pub enum AttributeError {

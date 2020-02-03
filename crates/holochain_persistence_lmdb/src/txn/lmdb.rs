@@ -9,6 +9,7 @@ use holochain_persistence_api::{
     cas::{content::*, storage::*},
     eav::*,
     error::*,
+    has_uuid::HasUuid,
     reporting::{ReportStorage, StorageReport},
     txn::{Cursor, CursorProvider, DefaultPersistenceManager},
 };
@@ -20,6 +21,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
+
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct LmdbCursor<A: Attribute> {
@@ -134,13 +136,15 @@ impl<A: Attribute> LmdbCursor<A> {
     }
 }
 
-impl<A: Attribute> ContentAddressableStorage for LmdbCursor<A> {
+impl<A: Attribute> AddContent for LmdbCursor<A> {
     /// Adds `content` only to the staging CAS database. Use `commit()` to write to the
     /// primary.
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.staging_cas_db.add(content)
     }
+}
 
+impl<A: Attribute> FetchContent for LmdbCursor<A> {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         self.fetch(address)
             .map(|maybe_content| maybe_content.is_some())
@@ -173,13 +177,15 @@ impl<A: Attribute> ContentAddressableStorage for LmdbCursor<A> {
             Ok(None)
         }
     }
+}
 
+impl<A: Attribute> HasUuid for LmdbCursor<A> {
     fn get_id(&self) -> uuid::Uuid {
         self.cas_db.get_id()
     }
 }
 
-impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> for LmdbCursor<A> {
+impl<A: Attribute + serde::de::DeserializeOwned> AddEavi<A> for LmdbCursor<A> {
     /// Adds `content` only to the staging EAVI database. Use `commit()` to write to the
     /// primary.
     fn add_eavi(
@@ -190,7 +196,9 @@ impl<A: Attribute + serde::de::DeserializeOwned> EntityAttributeValueStorage<A> 
             .resizable_add_lmdb_eavi(eav)
             .map_err(to_api_error)
     }
+}
 
+impl<A: Attribute + serde::de::DeserializeOwned> FetchEavi<A> for LmdbCursor<A> {
     /// First query the staging EAVI database, then the primary. Cache the results from the
     /// primary into the staging database.
     fn fetch_eavi(
@@ -240,7 +248,8 @@ const STAGING_EAV_BUCKET: &str = "staging_eav";
 
 impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A> {
     type Cursor = LmdbCursor<A>;
-    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+    type CursorRw = LmdbCursor<A>;
+    fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw> {
         let db_names = vec![STAGING_CAS_BUCKET, STAGING_EAV_BUCKET];
 
         let mut staging_path = self.staging_path_prefix.clone();
@@ -282,6 +291,10 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
             staging_cas_db,
             staging_eav_db,
         ))
+    }
+
+    fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        self.create_cursor_rw()
     }
 }
 
@@ -339,11 +352,9 @@ pub mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{AddressableContent, ExampleAddressableContent},
-            storage::{ContentAddressableStorage, ExampleLink},
+            storage::ExampleLink,
         },
-        eav::{
-            Attribute, EntityAttributeValueIndex, EntityAttributeValueStorage, ExampleAttribute,
-        },
+        eav::{AddEavi, Attribute, EntityAttributeValueIndex, ExampleAttribute},
         txn::*,
     };
     use tempfile::tempdir;
@@ -555,8 +566,19 @@ pub mod tests {
         enable_logging_for_test(true);
         let manager: LmdbManager<ExampleAttribute> = new_test_manager();
         let manager_dyn: Box<dyn PersistenceManagerDyn<_>> = Box::new(manager);
+        let data: Vec<u8> = Vec::from(format!("{}", "abc").as_bytes());
 
-        let cursor = manager_dyn.create_cursor().unwrap();
+        let entity_content: Content = RawString::from("red").into();
+        let eavi = EntityAttributeValueIndex::new(
+            &holochain_persistence_api::hash::HashString::from(data.clone()),
+            &ExampleAttribute::WithoutPayload,
+            &data.into(),
+        )
+        .unwrap();
+
+        let cursor = manager_dyn.create_cursor_rw().unwrap();
+        assert!(cursor.add(&entity_content).is_ok());
+        assert!(cursor.add_eavi(&eavi).is_ok());
         assert!(cursor.commit().is_ok());
     }
 }

@@ -1,7 +1,7 @@
 use holochain_persistence_api::{
     eav::{
-        increment_key_till_no_collision, Attribute, EaviQuery, EntityAttributeValueIndex,
-        EntityAttributeValueStorage,
+        increment_key_till_no_collision, AddEavi, Attribute, EaviQuery, EntityAttributeValueIndex,
+        FetchEavi,
     },
     error::PersistenceResult,
     reporting::ReportStorage,
@@ -40,7 +40,7 @@ impl<A: Attribute> EavMemoryStorage<A> {
     }
 }
 
-impl<A: Attribute> EntityAttributeValueStorage<A> for EavMemoryStorage<A>
+impl<A: Attribute> AddEavi<A> for EavMemoryStorage<A>
 where
     A: Send + Sync,
 {
@@ -53,7 +53,12 @@ where
         map.insert(new_eav.clone());
         Ok(Some(new_eav))
     }
+}
 
+impl<A: Attribute> FetchEavi<A> for EavMemoryStorage<A>
+where
+    A: Send + Sync,
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,

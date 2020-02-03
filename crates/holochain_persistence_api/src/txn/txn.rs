@@ -1,10 +1,17 @@
-use crate::cas::storage::ExampleLink;
+use crate::{
+    cas::storage::{ExampleContentAddressableStorage, ExampleLink},
+    eav::ExampleEntityAttributeValueStorage,
+    has_uuid::HasUuid,
+};
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::{ContentAddressableStorage, EavTestSuite, StorageTestSuite},
+        storage::{
+            AddContent, ContentAddressableStorage, EavTestSuite, FetchContent, StorageTestSuite,
+        },
     },
+    eav::storage::{AddEavi, FetchEavi},
     eav::*,
     error::*,
     reporting::{ReportStorage, StorageReport},
@@ -33,25 +40,26 @@ impl<W: Writer> WriterDyn for W {
     }
 }
 
-/// Cursor interface over both CAS and EAV databases. Provides transactional support
+/// Cursor interface over both CAS and EAV databases.
+pub trait Cursor<A: Attribute>: FetchContent + FetchEavi<A> + HasUuid {}
+
+/// Writeable cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `Writer` across both of them.
-pub trait Cursor<A: Attribute>:
-    Writer + ContentAddressableStorage + EntityAttributeValueStorage<A>
-{
-}
+pub trait CursorRw<A: Attribute>: Writer + Cursor<A> + AddContent + AddEavi<A> {}
 
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
-pub trait CursorDyn<A: Attribute>:
-    WriterDyn + ContentAddressableStorage + EntityAttributeValueStorage<A>
-{
-}
+pub trait CursorRwDyn<A: Attribute>: CursorRw<A> + WriterDyn {}
 
-impl<A: Attribute, C: Cursor<A>> CursorDyn<A> for C {}
+impl<A: Attribute, C: Cursor<A> + Writer + AddContent + AddEavi<A>> CursorRw<A> for C {}
+impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
 
 // TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> Cursor<A>);
+
+// TODO Should cursor's even be cloneable? SPIKE this
+clone_trait_object!(<A:Attribute> CursorRw<A>);
 
 /// A write that does nothing, for testing or for
 /// implementations that don't require the commit and abort functions
@@ -101,12 +109,19 @@ impl<
         A: Attribute,
         CAS: ContentAddressableStorage + Clone,
         EAV: EntityAttributeValueStorage<A> + Clone,
-    > ContentAddressableStorage for NonTransactionalCursor<A, CAS, EAV>
+    > AddContent for NonTransactionalCursor<A, CAS, EAV>
 {
     fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.cas.add(content)
     }
+}
 
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > FetchContent for NonTransactionalCursor<A, CAS, EAV>
+{
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
         self.cas.fetch(address)
     }
@@ -114,7 +129,14 @@ impl<
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         self.cas.contains(address)
     }
+}
 
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > HasUuid for NonTransactionalCursor<A, CAS, EAV>
+{
     fn get_id(&self) -> Uuid {
         self.cas.get_id()
     }
@@ -124,7 +146,7 @@ impl<
         A: Attribute,
         CAS: ContentAddressableStorage + Clone,
         EAV: EntityAttributeValueStorage<A> + Clone,
-    > EntityAttributeValueStorage<A> for NonTransactionalCursor<A, CAS, EAV>
+    > AddEavi<A> for NonTransactionalCursor<A, CAS, EAV>
 {
     fn add_eavi(
         &self,
@@ -132,7 +154,14 @@ impl<
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         self.eav.add_eavi(eavi)
     }
+}
 
+impl<
+        A: Attribute,
+        CAS: ContentAddressableStorage + Clone,
+        EAV: EntityAttributeValueStorage<A> + Clone,
+    > FetchEavi<A> for NonTransactionalCursor<A, CAS, EAV>
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
@@ -178,8 +207,13 @@ impl<
     > CursorProvider<A> for NonTransactionalCursor<A, CAS, EAV>
 {
     type Cursor = Self;
+    type CursorRw = Self;
 
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
+        Ok(self.clone())
+    }
+
+    fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw> {
         Ok(self.clone())
     }
 }
@@ -195,9 +229,13 @@ impl<
 pub trait CursorProvider<A: Attribute> {
     /// The type of a cursor for this cursor provider
     type Cursor: Cursor<A>;
+    type CursorRw: CursorRw<A>;
 
-    /// Creates a new cursor. Use carefully as one instance of a cursor may block another,
-    /// especially when cursors are mutating the primary store.
+    /// Creates a new read/write cursor. Use carefully as one instance of a cursor
+    /// may block another, especially when cursors are mutating the primary store.
+    fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw>;
+
+    /// Creates a new read cursor.
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor>;
 }
 
@@ -215,19 +253,28 @@ pub trait CursorProvider<A: Attribute> {
 pub trait CursorProviderDyn<A: Attribute>: Send + Sync + Debug {
     /// Creates a new boxed cursor object. Use carefully as one instance of a cursor
     /// may block another, especially when cursors are mutating the primary store.
-    fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>>;
+    fn create_cursor_rw(&self) -> PersistenceResult<Box<dyn CursorRwDyn<A>>>;
+
+    fn create_cursor(&self) -> PersistenceResult<Box<dyn Cursor<A>>>;
 }
 
 impl<
         A: Attribute,
         C: Cursor<A> + 'static,
-        CP: CursorProvider<A, Cursor = C> + Send + Sync + Debug,
+        CW: CursorRw<A> + 'static,
+        CP: CursorProvider<A, Cursor = C, CursorRw = CW> + Send + Sync + Debug,
     > CursorProviderDyn<A> for CP
 {
-    fn create_cursor(&self) -> PersistenceResult<Box<dyn CursorDyn<A>>> {
+    fn create_cursor_rw(&self) -> PersistenceResult<Box<dyn CursorRwDyn<A>>> {
+        let cp: &CP = self;
+        let cursor = cp.create_cursor_rw()?;
+        Ok(Box::new(cursor) as Box<dyn CursorRwDyn<A>>)
+    }
+
+    fn create_cursor(&self) -> PersistenceResult<Box<dyn Cursor<A>>> {
         let cp: &CP = self;
         let cursor = cp.create_cursor()?;
-        Ok(Box::new(cursor) as Box<dyn CursorDyn<A>>)
+        Ok(Box::new(cursor) as Box<dyn Cursor<A>>)
     }
 }
 
@@ -270,6 +317,7 @@ impl<
     > PersistenceManagerDyn<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 where
     CP::Cursor: 'static,
+    CP::CursorRw: 'static,
 {
     fn cas(&self) -> Arc<dyn ContentAddressableStorage> {
         Arc::new(self.cas.clone())
@@ -372,15 +420,16 @@ impl<
     > CursorProvider<A> for DefaultPersistenceManager<A, CAS, EAV, CP>
 {
     type Cursor = CP::Cursor;
+    type CursorRw = CP::CursorRw;
 
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
         self.cursor_provider.create_cursor()
     }
-}
 
-use crate::{
-    cas::storage::ExampleContentAddressableStorage, eav::ExampleEntityAttributeValueStorage,
-};
+    fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw> {
+        self.cursor_provider.create_cursor_rw()
+    }
+}
 
 pub type ExamplePersistenceManager<A> = DefaultPersistenceManager<
     A,
@@ -419,7 +468,9 @@ impl<
     > PersistenceManagerTestSuite<A, CP, TCP>
 where
     CP::Cursor: Clone + 'static,
+    CP::CursorRw: Clone + 'static,
     TCP::Cursor: Clone,
+    TCP::CursorRw: Clone,
 {
     pub fn new(cursor_provider: CP, tombstone_cursor_provider: TCP) -> Self {
         Self {
@@ -434,11 +485,11 @@ where
     fn with_cursor_internal<AA: Attribute, CI: CursorProvider<AA>>(
         cursor_provider: &CI,
         context: &str,
-        f: impl FnOnce(CI::Cursor) -> (),
+        f: impl FnOnce(CI::CursorRw) -> (),
     ) where
-        CI::Cursor: Clone,
+        CI::CursorRw: Clone,
     {
-        let cursor_result = cursor_provider.create_cursor();
+        let cursor_result = cursor_provider.create_cursor_rw();
         assert!(
             cursor_result.is_ok(),
             format!(
@@ -460,7 +511,7 @@ where
         );
     }
 
-    pub fn with_cursor(&self, context: &str, f: impl FnOnce(CP::Cursor) -> ()) {
+    pub fn with_cursor(&self, context: &str, f: impl FnOnce(CP::CursorRw) -> ()) {
         Self::with_cursor_internal(&self.cursor_provider, context, f)
     }
 
@@ -494,7 +545,7 @@ where
         Addressable: AddressableContent + Clone,
     {
         self.with_cursor("txn_eav_test_one_to_many", |cursor| {
-            EavTestSuite::test_one_to_many::<Addressable, A, CP::Cursor>(cursor, attribute)
+            EavTestSuite::test_one_to_many::<Addressable, A, CP::CursorRw>(cursor, attribute)
         })
     }
 
@@ -503,7 +554,7 @@ where
         Addressable: AddressableContent + Clone,
     {
         self.with_cursor("txn_eav_test_range", |cursor| {
-            EavTestSuite::test_range::<Addressable, A, CP::Cursor>(cursor, attribute)
+            EavTestSuite::test_range::<Addressable, A, CP::CursorRw>(cursor, attribute)
         })
     }
 
@@ -512,7 +563,9 @@ where
         Addressable: AddressableContent + Clone,
     {
         self.with_cursor("txn_eav_test_multiple_attributes", |cursor| {
-            EavTestSuite::test_multiple_attributes::<Addressable, A, CP::Cursor>(cursor, attributes)
+            EavTestSuite::test_multiple_attributes::<Addressable, A, CP::CursorRw>(
+                cursor, attributes,
+            )
         })
     }
 
@@ -521,7 +574,7 @@ where
         Addressable: AddressableContent + Clone,
     {
         self.with_cursor("txn_eav_test_many_to_one", |cursor| {
-            EavTestSuite::test_many_to_one::<Addressable, A, CP::Cursor>(cursor, attribute)
+            EavTestSuite::test_many_to_one::<Addressable, A, CP::CursorRw>(cursor, attribute)
         })
     }
 
@@ -571,7 +624,7 @@ where
             assert_eq!(cursor.fetch_eavi(&eavi_query).unwrap().len(), 1);
         });
 
-        let cursor_result = self.cursor_provider.create_cursor();
+        let cursor_result = self.cursor_provider.create_cursor_rw();
         assert!(
             cursor_result.is_ok(),
             format!(
