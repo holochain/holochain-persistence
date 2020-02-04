@@ -85,7 +85,7 @@ where
         // will have a more recent timestamp
         while let Ok(Some(_)) = self.lmdb.store.get(&reader, key.clone()) {
             new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
-                .map_err(|_| StoreError::DataError(DataError::UnexpectedType))?;
+                .map_err(|_| StoreError::DataError(DataError::Empty))?;
             key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
@@ -129,6 +129,7 @@ where
                     .collect::<Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError>>()?
             }
         };
+
         let entries_iter = entries.iter().cloned();
         Ok(query.run(entries_iter))
     }
