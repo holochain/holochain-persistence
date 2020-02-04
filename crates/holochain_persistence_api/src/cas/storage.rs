@@ -829,7 +829,7 @@ impl EavTestSuite {
                         match attr {
                             ExampleLink::RemovedLink(link_type, tag)
                             | ExampleLink::LinkTag(link_type, tag) => {
-                                link_type.contains("c") || tag.contains("c")
+                                link_type.contains('c') || tag.contains('c')
                             }
                         }
                     }),
