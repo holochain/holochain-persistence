@@ -251,7 +251,9 @@ where
 
 pub struct EavTestSuite;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize, DefaultJson, Eq, PartialEq, PartialOrd)]
+#[derive(
+    Debug, Hash, Clone, Serialize, Deserialize, DefaultJson, Eq, PartialEq, PartialOrd, Ord,
+)]
 pub enum ExampleLink {
     RemovedLink(String, String),
     LinkTag(String, String),
@@ -725,23 +727,29 @@ impl EavTestSuite {
     {
         let foo_content = Content::from(RawString::from("foo"));
         let bar_content = Content::from(RawString::from("bar"));
+        let baz_content = Content::from(RawString::from("baz"));
 
         let one = A::try_from_content(&foo_content)
             .expect("could not create AddressableContent from Content");
         let two = A::try_from_content(&bar_content)
             .expect("could not create AddressableContent from Content");
+        let three = A::try_from_content(&baz_content)
+            .expect("could not create AddressableContent from Content");
+
         //set the value that should take precedence over everything when we set our tombstone
         let tombstone_attribute = ExampleLink::RemovedLink("c".into(), "c".into());
+        let mut expected_other_tombstone = BTreeSet::new();
         let mut expected_tombstone = BTreeSet::new();
         let mut expected_tombstone_not_found = BTreeSet::new();
         //this is our test data
-        vec!["a", "b", "c", "d", "e"].iter().for_each(|s| {
+        vec!["ac", "bd", "c", "dc", "e"].iter().for_each(|s| {
             let str = String::from(*s);
             //for each test data that comes through, we should create an EAV with link_tag over it
-            let eav = EntityAttributeValueIndex::new(
+            let eav = EntityAttributeValueIndex::new_with_index(
                 &one.address(),
                 &ExampleLink::LinkTag(str.clone(), str.clone()),
                 &two.address(),
+                0,
             )
             .expect("could not create EAV");
 
@@ -752,10 +760,11 @@ impl EavTestSuite {
                 .expect("Could not get eavi option");
             if *s == "c" {
                 //when we reach C we are going to add a remove_link EAVI
-                let eav_remove = EntityAttributeValueIndex::new(
+                let eav_remove = EntityAttributeValueIndex::new_with_index(
                     &one.address(),
-                    &ExampleLink::RemovedLink(str.clone(), str),
+                    &ExampleLink::RemovedLink(str.clone(), str.clone()),
                     &two.address(),
+                    0,
                 )
                 .expect("could not create EAV");
 
@@ -764,7 +773,22 @@ impl EavTestSuite {
                     .add_eavi(&eav_remove)
                     .expect("could not add eav")
                     .expect("Could not get eavi option");
+
+                let eav_remove_2 = EntityAttributeValueIndex::new_with_index(
+                    &one.address(),
+                    &ExampleLink::RemovedLink(str.clone(), str),
+                    &three.address(),
+                    new_remove_eav.index(),
+                )
+                .expect("could not create EAV");
+
+                let new_remove_eav_2 = eav_storage
+                    .add_eavi(&eav_remove_2)
+                    .expect("could not add eav")
+                    .expect("Could not get eavi option");
+
                 expected_tombstone.insert(new_remove_eav);
+                expected_other_tombstone.insert(new_remove_eav_2);
                 eav_storage
                     .add_eavi(&eav)
                     .expect("could not add eav")
@@ -779,6 +803,7 @@ impl EavTestSuite {
 
         //get from the eavi, if tombstone is found return that as priority
         let expected_attribute = Some(tombstone_attribute);
+        println!("expected other tombstone {:?}", expected_other_tombstone);
 
         //this assert is supposed to return RemovedLink::("c","c") as since we have set it in our tombstone it should take precedence over everything
         assert_eq!(
@@ -788,6 +813,45 @@ impl EavTestSuite {
                     Some(one.address()).into(),
                     None.into(),
                     Some(two.address()).into(),
+                    IndexFilter::LatestByAttribute,
+                    Some(expected_attribute.clone().into())
+                )) // this fetch eavi sets a tombstone on remove_link(c,c) which means It will catch the tombstone on remove_link
+                .unwrap()
+        );
+
+        //this tests if complex predicates are able to be matched on and return tombstone
+        assert_eq!(
+            expected_tombstone,
+            eav_storage
+                .fetch_eavi(&EaviQuery::new(
+                    Some(one.address()).into(),
+                    EavFilter::predicate(move |attr| {
+                        match attr {
+                            ExampleLink::RemovedLink(link_type, tag)
+                            | ExampleLink::LinkTag(link_type, tag) => {
+                                link_type.contains('c') || tag.contains('c')
+                            }
+                        }
+                    }),
+                    Some(two.address()).into(),
+                    IndexFilter::LatestByAttribute,
+                    Some(EavFilter::predicate(move |attr| {
+                        match attr {
+                            ExampleLink::RemovedLink(_, _) => true,
+                            _ => false,
+                        }
+                    }))
+                )) // this fetch eavi sets a tombstone on remove_link(c,c) which means It will catch the tombstone on remove_link
+                .unwrap()
+        );
+
+        assert_eq!(
+            expected_other_tombstone,
+            eav_storage
+                .fetch_eavi(&EaviQuery::new(
+                    Some(one.address()).into(),
+                    None.into(),
+                    Some(three.address()).into(),
                     IndexFilter::LatestByAttribute,
                     Some(expected_attribute.into())
                 )) // this fetch eavi sets a tombstone on remove_link(c,c) which means It will catch the tombstone on remove_link

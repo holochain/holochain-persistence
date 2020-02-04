@@ -60,7 +60,6 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
         let iter2 = iter.clone();
         let filtered = iter
             .filter(|eavi| EaviQuery::eav_check(&eavi, &self.entity, &self.attribute, &self.value));
-
         match self.index {
             IndexFilter::LatestByAttribute => filtered
                 .filter_map(|eavi| {
@@ -87,21 +86,16 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
                                     &self.attribute,
                                     &fold_query.value,
                                 ) {
-                                    //check if tombstone condition is met
+                                    //check if tombstone condition is met at
+                                    //if a tombstone is not found it should default to false
                                     if self
                                         .tombstone()
                                         .as_ref()
                                         .map(|s| s.check(eavi_fold.attribute()))
-                                        .unwrap_or(true)
+                                        .unwrap_or_default()
                                     {
                                         //if attrribute is found return the value plus the tombstone boolean set to true
-                                        (
-                                            Some(eavi_fold),
-                                            self.tombstone()
-                                                .as_ref()
-                                                .map(|_| true)
-                                                .unwrap_or(false),
-                                        )
+                                        (Some(eavi_fold), true)
                                     } else {
                                         //return value that signifies value has been found but tombstone has not been found
                                         (Some(eavi_fold), false)

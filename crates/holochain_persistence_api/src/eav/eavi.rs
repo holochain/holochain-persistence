@@ -18,7 +18,6 @@ use holochain_json_api::{
     json::JsonString,
 };
 use std::{
-    cmp::Ordering,
     collections::BTreeSet,
     convert::{TryFrom, TryInto},
     fmt::{Debug, Display, Formatter},
@@ -32,9 +31,14 @@ pub type Entity = Address;
 ///  This is the minimal bounds defined for any attribute type. Some storage implementations
 /// may require other traits.
 
-pub trait Attribute: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug {}
+pub trait Attribute:
+    PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Ord
+{
+}
 
-#[derive(PartialEq, Eq, PartialOrd, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson,
+)]
 pub enum ExampleAttribute {
     WithoutPayload,
     WithPayload(String),
@@ -103,12 +107,12 @@ pub type Index = i64;
 // type Source ...
 /// The basic struct for EntityAttributeValue triple, implemented as AddressableContent
 /// including the necessary serialization inherited.
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct EntityAttributeValueIndex<A: Attribute> {
-    entity: Entity,
-    attribute: A,
-    value: Value,
     index: Index,
+    entity: Entity,
+    value: Value,
+    attribute: A,
     // source: Source,
 }
 
@@ -161,18 +165,6 @@ where
     type Error = JsonError;
     fn try_from(json_string: JsonString) -> Result<Self, Self::Error> {
         EntityAttributeValueIndex::try_from(&json_string)
-    }
-}
-
-impl<A: Attribute> PartialOrd for EntityAttributeValueIndex<A> {
-    fn partial_cmp(&self, other: &EntityAttributeValueIndex<A>) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<A: Attribute> Ord for EntityAttributeValueIndex<A> {
-    fn cmp(&self, other: &EntityAttributeValueIndex<A>) -> Ordering {
-        self.index.cmp(&other.index())
     }
 }
 
