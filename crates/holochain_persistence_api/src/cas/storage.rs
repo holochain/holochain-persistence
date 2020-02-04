@@ -819,7 +819,6 @@ impl EavTestSuite {
                 .unwrap()
         );
 
-        //fails on curent develop
         //this tests if complex predicates are able to be matched on and return tombstone
         assert_eq!(
             expected_tombstone,
