@@ -742,7 +742,7 @@ impl EavTestSuite {
         let mut expected_tombstone = BTreeSet::new();
         let mut expected_tombstone_not_found = BTreeSet::new();
         //this is our test data
-        vec!["a", "b", "c", "d", "e"].iter().for_each(|s| {
+        vec!["ac", "bd", "c", "dc", "e"].iter().for_each(|s| {
             let str = String::from(*s);
             //for each test data that comes through, we should create an EAV with link_tag over it
             let eav = EntityAttributeValueIndex::new_with_index(
@@ -815,6 +815,33 @@ impl EavTestSuite {
                     Some(two.address()).into(),
                     IndexFilter::LatestByAttribute,
                     Some(expected_attribute.clone().into())
+                )) // this fetch eavi sets a tombstone on remove_link(c,c) which means It will catch the tombstone on remove_link
+                .unwrap()
+        );
+
+        //fails on curent develop
+        //this tests if complex predicates are able to be matched on and return tombstone
+        assert_eq!(
+            expected_tombstone,
+            eav_storage
+                .fetch_eavi(&EaviQuery::new(
+                    Some(one.address()).into(),
+                    EavFilter::predicate(move |attr| {
+                        match attr {
+                            ExampleLink::RemovedLink(link_type, tag)
+                            | ExampleLink::LinkTag(link_type, tag) => {
+                                link_type.contains("c") || tag.contains("c")
+                            }
+                        }
+                    }),
+                    Some(two.address()).into(),
+                    IndexFilter::LatestByAttribute,
+                    Some(EavFilter::predicate(move |attr| {
+                        match attr {
+                            ExampleLink::RemovedLink(_, _) => true,
+                            _ => false,
+                        }
+                    }))
                 )) // this fetch eavi sets a tombstone on remove_link(c,c) which means It will catch the tombstone on remove_link
                 .unwrap()
         );
