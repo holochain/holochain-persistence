@@ -91,7 +91,7 @@ where
 
         self.lmdb
             .add(key, &Value::Json(&new_eav.content().to_string()))?;
-        Ok(Some(new_eav.clone()))
+        Ok(Some(new_eav))
     }
 
     fn fetch_lmdb_eavi(
