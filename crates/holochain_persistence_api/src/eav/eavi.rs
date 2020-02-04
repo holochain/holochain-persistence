@@ -31,9 +31,14 @@ pub type Entity = Address;
 ///  This is the minimal bounds defined for any attribute type. Some storage implementations
 /// may require other traits.
 
-pub trait Attribute: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Ord {}
+pub trait Attribute:
+    PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Ord
+{
+}
 
-#[derive(PartialEq, Eq, PartialOrd,Ord, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, Serialize, Deserialize, DefaultJson,
+)]
 pub enum ExampleAttribute {
     WithoutPayload,
     WithPayload(String),
@@ -102,7 +107,7 @@ pub type Index = i64;
 // type Source ...
 /// The basic struct for EntityAttributeValue triple, implemented as AddressableContent
 /// including the necessary serialization inherited.
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize,PartialOrd,Ord)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct EntityAttributeValueIndex<A: Attribute> {
     index: Index,
     entity: Entity,
@@ -162,8 +167,6 @@ where
         EntityAttributeValueIndex::try_from(&json_string)
     }
 }
-
-
 
 impl<A: Attribute> AddressableContent for EntityAttributeValueIndex<A>
 where

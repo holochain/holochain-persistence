@@ -95,10 +95,7 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
                                         .unwrap_or_default()
                                     {
                                         //if attrribute is found return the value plus the tombstone boolean set to true
-                                        (
-                                            Some(eavi_fold),
-                                            true,
-                                        )
+                                        (Some(eavi_fold), true)
                                     } else {
                                         //return value that signifies value has been found but tombstone has not been found
                                         (Some(eavi_fold), false)
@@ -175,20 +172,18 @@ impl<'a, T: 'a + Eq> EavFilter<'a, T> {
     pub fn check(&self, b: T) -> bool {
         match self {
             Self::Exact(a) => {
-               if a == &b
-               {
-                   println!("these match");
-                   true
-               }
-               else 
-               {
-                   println!("these dont");
-                   false
-               }
+                if a == &b {
+                    println!("these match");
+                    true
+                } else {
+                    println!("these dont");
+                    false
+                }
             }
             Self::Predicate(f) => {
                 println!("predicate match");
-                f(b)},
+                f(b)
+            }
         }
     }
 }

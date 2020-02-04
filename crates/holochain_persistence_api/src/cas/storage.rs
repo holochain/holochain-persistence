@@ -251,7 +251,9 @@ where
 
 pub struct EavTestSuite;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize, DefaultJson, Eq, PartialEq, PartialOrd,Ord)]
+#[derive(
+    Debug, Hash, Clone, Serialize, Deserialize, DefaultJson, Eq, PartialEq, PartialOrd, Ord,
+)]
 pub enum ExampleLink {
     RemovedLink(String, String),
     LinkTag(String, String),
@@ -715,7 +717,6 @@ impl EavTestSuite {
         }
     }
 
-
     //this tests tombstone functionality in the sense of , if there is a tombstone variable set that matches the predicate it should take precedent over everything else that is found
     //and if there isn't it should get the latest. This test will test both scenarios in which a tombstone is set and a match is found and a tombstone is set and a match is not found.
     //no need to test the case in which a tombstone is not set because it is has been applied in previous tests already
@@ -735,7 +736,6 @@ impl EavTestSuite {
         let three = A::try_from_content(&baz_content)
             .expect("could not create AddressableContent from Content");
 
-            
         //set the value that should take precedence over everything when we set our tombstone
         let tombstone_attribute = ExampleLink::RemovedLink("c".into(), "c".into());
         let mut expected_other_tombstone = BTreeSet::new();
@@ -749,7 +749,7 @@ impl EavTestSuite {
                 &one.address(),
                 &ExampleLink::LinkTag(str.clone(), str.clone()),
                 &two.address(),
-                0
+                0,
             )
             .expect("could not create EAV");
 
@@ -764,24 +764,24 @@ impl EavTestSuite {
                     &one.address(),
                     &ExampleLink::RemovedLink(str.clone(), str.clone()),
                     &two.address(),
-                    0
+                    0,
                 )
                 .expect("could not create EAV");
 
                 //right after we are also going to add a LinkTag with the same C data just to diversify the data
                 let new_remove_eav = eav_storage
-                .add_eavi(&eav_remove)
-                .expect("could not add eav")
-                .expect("Could not get eavi option");
+                    .add_eavi(&eav_remove)
+                    .expect("could not add eav")
+                    .expect("Could not get eavi option");
 
                 let eav_remove_2 = EntityAttributeValueIndex::new_with_index(
                     &one.address(),
                     &ExampleLink::RemovedLink(str.clone(), str),
                     &three.address(),
-                    new_remove_eav.index()
+                    new_remove_eav.index(),
                 )
                 .expect("could not create EAV");
-                
+
                 let new_remove_eav_2 = eav_storage
                     .add_eavi(&eav_remove_2)
                     .expect("could not add eav")
@@ -793,10 +793,7 @@ impl EavTestSuite {
                     .add_eavi(&eav)
                     .expect("could not add eav")
                     .expect("Could not get eavi option");
-                
-                
-            } 
-            else if *s == "e" {
+            } else if *s == "e" {
                 //this is the last value we expect out of query
                 expected_tombstone_not_found.insert(expected_eav);
             } else {
@@ -806,7 +803,7 @@ impl EavTestSuite {
 
         //get from the eavi, if tombstone is found return that as priority
         let expected_attribute = Some(tombstone_attribute);
-        println!("expected other tombstone {:?}",expected_other_tombstone);
+        println!("expected other tombstone {:?}", expected_other_tombstone);
 
         //this assert is supposed to return RemovedLink::("c","c") as since we have set it in our tombstone it should take precedence over everything
         assert_eq!(

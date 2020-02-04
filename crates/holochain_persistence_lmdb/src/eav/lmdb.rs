@@ -8,7 +8,10 @@ use holochain_persistence_api::{
 };
 // use kv::{Config, Manager, Store, Error as KvError};
 use crate::common::LmdbInstance;
-use rkv::{error::{StoreError,DataError}, Value};
+use rkv::{
+    error::{DataError, StoreError},
+    Value,
+};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -77,13 +80,13 @@ where
 
         // use a clever key naming scheme to speed up exact match queries on the entity
         let mut new_eav = eav.clone();
-        let mut key = format!("{}::{}", new_eav.entity(),new_eav.index());
+        let mut key = format!("{}::{}", new_eav.entity(), new_eav.index());
         // need to check there isn't a duplicate key though and if there is create a new EAVI which
         // will have a more recent timestamp
         while let Ok(Some(_)) = self.lmdb.store.get(&reader, key.clone()) {
             new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
-                      .map_err(|_|StoreError::DataError(DataError::UnexpectedType))?;
-            key = format!("{}::{}", new_eav.entity(),new_eav.index());
+                .map_err(|_| StoreError::DataError(DataError::UnexpectedType))?;
+            key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
         self.lmdb
