@@ -29,7 +29,7 @@ pub mod has_uuid;
 pub mod hash;
 pub mod reporting;
 pub mod txn;
-
+pub mod univ_map;
 #[macro_use]
 extern crate objekt;
 
