@@ -36,8 +36,9 @@ pub trait Attribute:
 {
 }
 
-impl<A: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send + Ord>
-    Attribute for A
+impl<
+        A: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send + Ord,
+    > Attribute for A
 {
 }
 

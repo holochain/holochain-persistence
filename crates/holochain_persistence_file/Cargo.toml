@@ -13,13 +13,13 @@ repository = "https://github.com/holochain/holochain-persistence"
 
 
 [dependencies]
-serde = "=1.0.100"
-serde_derive = "=1.0.100"
-serde_test = "=1.0.100"
+serde = "1.0.104"
+serde_derive = "1.0.104"
+serde_test = "1.0.104"
 multihash = "=0.8.0"
 # keep version on the left hand side for release regex
 holochain_persistence_api = { version = "=0.0.15", path = "../holochain_persistence_api" }
-holochain_json_api = "=0.0.20"
+holochain_json_api = "=0.0.22"
 lazy_static = "=1.4.0"
 glob = "=0.3.0"
 uuid = { version = "=0.7.1", features = ["v4"] }
