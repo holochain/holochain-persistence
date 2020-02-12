@@ -5,7 +5,12 @@ use holochain_persistence_api::{
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{error::StoreError, EnvironmentFlags, Reader, Value, Writer};
+use rkv::{EnvironmentFlags, Reader, Writer};
+// use kv::{Config, Manager, Store, Error as KvError};
+use rkv::{
+    error::{DataError, StoreError},
+    Value,
+};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Error, Formatter},
@@ -122,12 +127,11 @@ where
         // use a clever key naming scheme to speed up exact match queries on the entity
         let mut new_eav = eav.clone();
         let mut key = format!("{}::{}", new_eav.entity(), new_eav.index());
-
         // need to check there isn't a duplicate key though and if there is create a new EAVI which
         // will have a more recent timestamp
         while let Ok(Some(_)) = self.lmdb.store().get(&reader, key.clone()) {
             new_eav = EntityAttributeValueIndex::new(&eav.entity(), &eav.attribute(), &eav.value())
-                .unwrap();
+                .map_err(|_| StoreError::DataError(DataError::Empty))?;
             key = format!("{}::{}", new_eav.entity(), new_eav.index());
         }
 
@@ -135,7 +139,7 @@ where
         drop(env);
         self.lmdb
             .resizable_add(&key, &Value::Json(&new_eav.content().to_string()))?;
-        Ok(Some(eav.clone()))
+        Ok(Some(new_eav))
     }
 
     pub fn fetch_lmdb_eavi<'env>(
@@ -171,6 +175,7 @@ where
                     .collect::<Result<BTreeSet<EntityAttributeValueIndex<A>>, StoreError>>()?
             }
         };
+
         let entries_iter = entries.iter().cloned();
         Ok(query.run(entries_iter))
     }

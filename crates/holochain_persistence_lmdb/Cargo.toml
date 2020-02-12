@@ -1,6 +1,6 @@
 [package]
 name = "holochain_persistence_lmdb"
-version = "0.0.13"
+version = "0.0.15"
 authors = ["Holochain Core Dev Team <devcore@holochain.org>"]
 edition = "2018"
 description = "persistence for content addressable storage and entity attribute value indexes backed by pickledb-rs."
@@ -13,14 +13,14 @@ repository = "https://github.com/holochain/holochain-persistence"
 
 
 [dependencies]
-serde = "=1.0.89"
-serde_json = { version = "=1.0.39", features = ["preserve_order"] }
-serde_derive = "=1.0.89"
-serde_test = "=1.0.89"
+serde = "=1.0.100"
+serde_json = { version = "=1.0.47", features = ["preserve_order"] }
+serde_derive = "=1.0.100"
+serde_test = "=1.0.100"
 multihash = "=0.8.0"
 # keep version on the left hand side for release regex
-holochain_persistence_api = { version = "=0.0.13", path = "../holochain_persistence_api" }
-holochain_json_api = "=0.0.17"
+holochain_persistence_api = { version = "=0.0.15", path = "../holochain_persistence_api" }
+holochain_json_api = "=0.0.20"
 lazy_static = "=1.4.0"
 glob = "=0.3.0"
 uuid = { version = "=0.7.1", features = ["v4"] }
@@ -29,8 +29,8 @@ rand = "0.7.2"
 rkv = "0.10.2"
 # To get access to lmdb error types which aren't exported by rkv
 lmdb-rkv = "0.12.3"
-holochain_logging = "0.0.4"
 shrinkwraprs = "0.2.1"
+holochain_logging = "=0.0.6"
 
 [dev-dependencies]
 tempfile = "=3.0.7"
