@@ -1,6 +1,7 @@
 use crate::{
     cas::storage::{ExampleContentAddressableStorage, ExampleLink},
     eav::ExampleEntityAttributeValueStorage,
+    univ_map::*,
     has_uuid::HasUuid,
 };
 /// Transactional trait extensions to the CAS and EAV persistence
@@ -295,6 +296,29 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn get_id(&self) -> Uuid;
 }
 
+
+pub type ManagerKey<A:Attribute, P:PersistenceManagerDyn<A>> = Key<String, P>;
+
+/// A high level api which brings together a CAS, EAV, and
+/// Cursor over them. A cursor may start transactions over both
+/// the stores or not, depending on implementation.
+pub trait PersistenceManagerSuite {
+
+    fn manager<A:Attribute>(&self, key:&ManagerKey<A, P>) -> Option<Box<dyn PersistenceManagerDyn<A>>>;
+}
+
+
+#[derive(Shrinkwrap, Clone)]
+pub struct DefaultPersistenceManagerSuite(UniversalMap<String>);
+
+impl PersistenceManagerSuite for DefaultPersistenceManagerSuite {
+
+    fn manager<A:Attribute>(&self, key:&ManagerKey<A, P>) -> Option<Box<dyn PersistenceManagerDyn<A>>> {
+        self.0.get(key)
+    }
+}
+
+
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation. Differs from
@@ -331,7 +355,6 @@ where
         PersistenceManager::get_id(self)
     }
 }
-
 /// Provides a simple, extensable version of a persistence manager. Intended
 /// to be specialized for a particular database implementation easily.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

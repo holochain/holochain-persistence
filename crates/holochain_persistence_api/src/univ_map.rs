@@ -1,5 +1,5 @@
 use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct Key<K, V>(K, PhantomData<V>);
 
 pub struct UniversalMap<K>(HashMap<K, Box<dyn Any>>);
@@ -27,9 +27,9 @@ impl<K: Eq + Hash> UniversalMap<K> {
         Self(HashMap::new())
     }
 
-    pub fn insert<V: 'static>(&mut self, key: Key<K, V>, value: V) {
-        let _result = self.0.insert(key.0, Box::new(value));
-        ()
+    pub fn insert<V: 'static>(&mut self, key: Key<K, V>, value: V) -> Option<Box<dyn Any>> {
+        let result = self.0.insert(key.0, Box::new(value));
+        result
     }
 
     pub fn get<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {

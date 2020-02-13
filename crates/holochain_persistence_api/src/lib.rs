@@ -8,6 +8,9 @@
 extern crate test;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate shrinkwraprs;
+
 
 extern crate chrono;
 extern crate futures;
