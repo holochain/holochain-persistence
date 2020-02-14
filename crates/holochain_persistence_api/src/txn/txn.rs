@@ -1,8 +1,8 @@
 use crate::{
     cas::storage::{ExampleContentAddressableStorage, ExampleLink},
     eav::ExampleEntityAttributeValueStorage,
-    univ_map::*,
     has_uuid::HasUuid,
+    univ_map::*,
 };
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{
@@ -44,16 +44,15 @@ impl<W: Writer> WriterDyn for W {
 /// Cursor interface over both CAS and EAV databases.
 pub trait Cursor<A: Attribute>: FetchContent + FetchEavi<A> + HasUuid {}
 
-/// Writeable cursor interface over both CAS and EAV databases. Provides transactional support
-/// by providing a `Writer` across both of them.
-pub trait CursorRw<A: Attribute>: Writer + Cursor<A> + AddContent + AddEavi<A> {}
+/// Writeable cursor interface over both CAS and EAV databases.
+pub trait CursorRw<A: Attribute>: Cursor<A> + AddContent + AddEavi<A> {}
 
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
-pub trait CursorRwDyn<A: Attribute>: CursorRw<A> + WriterDyn {}
+pub trait CursorRwDyn<A: Attribute>: CursorRw<A> {}
 
-impl<A: Attribute, C: Cursor<A> + Writer + AddContent + AddEavi<A>> CursorRw<A> for C {}
+impl<A: Attribute, C: Cursor<A> + AddContent + AddEavi<A>> CursorRw<A> for C {}
 impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
 
 // TODO Should cursor's even be cloneable? SPIKE this
@@ -230,7 +229,7 @@ impl<
 pub trait CursorProvider<A: Attribute> {
     /// The type of a cursor for this cursor provider
     type Cursor: Cursor<A>;
-    type CursorRw: CursorRw<A>;
+    type CursorRw: CursorRw<A> + Writer;
 
     /// Creates a new read/write cursor. Use carefully as one instance of a cursor
     /// may block another, especially when cursors are mutating the primary store.
@@ -262,7 +261,7 @@ pub trait CursorProviderDyn<A: Attribute>: Send + Sync + Debug {
 impl<
         A: Attribute,
         C: Cursor<A> + 'static,
-        CW: CursorRw<A> + 'static,
+        CW: CursorRw<A> + 'static + Writer,
         CP: CursorProvider<A, Cursor = C, CursorRw = CW> + Send + Sync + Debug,
     > CursorProviderDyn<A> for CP
 {
@@ -296,28 +295,37 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn get_id(&self) -> Uuid;
 }
 
-
-pub type ManagerKey<A:Attribute, P:PersistenceManagerDyn<A>> = Key<String, P>;
+pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
 
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
 pub trait PersistenceManagerSuite {
-
-    fn manager<A:Attribute>(&self, key:&ManagerKey<A, P>) -> Option<Box<dyn PersistenceManagerDyn<A>>>;
+    fn manager<A: Attribute + 'static>(
+        &self,
+        key: &ManagerKey<A>,
+    ) -> Option<&Box<dyn PersistenceManagerDyn<A>>>;
 }
 
+pub trait CrossTransactionalCursor: Writer {
+    fn cursor_rw<A: Attribute>(
+        &self,
+        key: &ManagerKey<A>,
+    ) -> PersistenceResult<Box<dyn CursorRwDyn<A>>>;
+    fn cursor<A: Attribute>(&self, key: &ManagerKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>>;
+}
 
-#[derive(Shrinkwrap, Clone)]
+#[derive(Shrinkwrap)]
 pub struct DefaultPersistenceManagerSuite(UniversalMap<String>);
 
 impl PersistenceManagerSuite for DefaultPersistenceManagerSuite {
-
-    fn manager<A:Attribute>(&self, key:&ManagerKey<A, P>) -> Option<Box<dyn PersistenceManagerDyn<A>>> {
+    fn manager<A: Attribute + 'static>(
+        &self,
+        key: &ManagerKey<A>,
+    ) -> Option<&Box<dyn PersistenceManagerDyn<A>>> {
         self.0.get(key)
     }
 }
-
 
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both
