@@ -50,10 +50,10 @@ pub trait CursorRw<A: Attribute>: Cursor<A> + AddContent + AddEavi<A> {}
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
-pub trait CursorRwDyn<A: Attribute>: CursorRw<A> {}
+pub trait CursorRwDyn<A: Attribute>: CursorRw<A> + WriterDyn {}
 
 impl<A: Attribute, C: Cursor<A> + AddContent + AddEavi<A>> CursorRw<A> for C {}
-impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
+impl<A: Attribute, C: CursorRw<A> + WriterDyn> CursorRwDyn<A> for C {}
 
 // TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> Cursor<A>);
