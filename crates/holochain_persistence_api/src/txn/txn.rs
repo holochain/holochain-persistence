@@ -301,29 +301,63 @@ pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
 /// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
 pub trait PersistenceManagerSuite {
+    type CrossTxnCursor: CrossTransactionalCursor;
     fn manager<A: Attribute + 'static>(
         &self,
         key: &ManagerKey<A>,
     ) -> Option<&Box<dyn PersistenceManagerDyn<A>>>;
+
+    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor>;
 }
 
 pub trait CrossTransactionalCursor: Writer {
     fn cursor_rw<A: Attribute>(
         &self,
         key: &ManagerKey<A>,
-    ) -> PersistenceResult<Box<dyn CursorRwDyn<A>>>;
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
     fn cursor<A: Attribute>(&self, key: &ManagerKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>>;
+}
+
+pub struct DefaultCrossTransactionalCursor;
+
+impl DefaultCrossTransactionalCursor {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl CrossTransactionalCursor for DefaultCrossTransactionalCursor {
+    fn cursor_rw<A: Attribute>(
+        &self,
+        _key: &ManagerKey<A>,
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+        Err("cross transactional read/write cursors unsupported".into())
+    }
+    fn cursor<A: Attribute>(&self, _key: &ManagerKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>> {
+        Err("cross transactional cursors unsupported".into())
+    }
+}
+
+impl Writer for DefaultCrossTransactionalCursor {
+    fn commit(self) -> PersistenceResult<()> {
+        Err("cross transactinal cursors unsupported: commit failed".into())
+    }
 }
 
 #[derive(Shrinkwrap)]
 pub struct DefaultPersistenceManagerSuite(UniversalMap<String>);
 
 impl PersistenceManagerSuite for DefaultPersistenceManagerSuite {
+    type CrossTxnCursor = DefaultCrossTransactionalCursor;
     fn manager<A: Attribute + 'static>(
         &self,
         key: &ManagerKey<A>,
     ) -> Option<&Box<dyn PersistenceManagerDyn<A>>> {
         self.0.get(key)
+    }
+
+    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
+        Ok(DefaultCrossTransactionalCursor::new())
     }
 }
 
