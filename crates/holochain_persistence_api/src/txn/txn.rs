@@ -300,14 +300,11 @@ pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
-pub trait PersistenceManagerSuite {
-    type CrossTxnCursor: CrossTransactionalCursor;
+pub trait PersistenceManagerSuite: CrossTxnCursorProvider {
     fn manager<A: Attribute + 'static>(
         &self,
         key: &ManagerKey<A>,
     ) -> Option<&Box<dyn PersistenceManagerDyn<A>>>;
-
-    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor>;
 }
 
 pub trait CrossTransactionalCursor: Writer {
@@ -316,6 +313,11 @@ pub trait CrossTransactionalCursor: Writer {
         key: &ManagerKey<A>,
     ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
     fn cursor<A: Attribute>(&self, key: &ManagerKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>>;
+}
+
+pub trait CrossTxnCursorProvider {
+    type CrossTxnCursor: CrossTransactionalCursor;
+    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor>;
 }
 
 pub struct DefaultCrossTransactionalCursor;
@@ -344,20 +346,24 @@ impl Writer for DefaultCrossTransactionalCursor {
     }
 }
 
-#[derive(Shrinkwrap)]
-pub struct DefaultPersistenceManagerSuite(UniversalMap<String>);
+pub struct DefaultPersistenceManagerSuite<CTP: CrossTxnCursorProvider> {
+    persistence_managers: UniversalMap<String>,
+    cross_txn_cursor_provider: CTP,
+}
 
-impl PersistenceManagerSuite for DefaultPersistenceManagerSuite {
-    type CrossTxnCursor = DefaultCrossTransactionalCursor;
+impl<CTP: CrossTxnCursorProvider> PersistenceManagerSuite for DefaultPersistenceManagerSuite<CTP> {
     fn manager<A: Attribute + 'static>(
         &self,
         key: &ManagerKey<A>,
     ) -> Option<&Box<dyn PersistenceManagerDyn<A>>> {
-        self.0.get(key)
+        self.persistence_managers.get(key)
     }
+}
 
+impl<CTP: CrossTxnCursorProvider> CrossTxnCursorProvider for DefaultPersistenceManagerSuite<CTP> {
+    type CrossTxnCursor = CTP::CrossTxnCursor;
     fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
-        Ok(DefaultCrossTransactionalCursor::new())
+        self.cross_txn_cursor_provider.create_cross_txn_cursor()
     }
 }
 
