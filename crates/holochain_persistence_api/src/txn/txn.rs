@@ -296,7 +296,6 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 }
 
 pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
-
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
 pub type CursorKey<A> = Key<String, Box<dyn Cursor<A>>>;
 

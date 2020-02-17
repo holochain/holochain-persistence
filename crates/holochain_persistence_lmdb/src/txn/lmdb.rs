@@ -255,17 +255,19 @@ pub struct LmdbCrossTxnCursorProvider {
 }
 
 impl CrossTxnCursorProvider for LmdbCrossTxnCursorProvider {
-    fn create_cursor_rw(&self) -> PersistenceResult<Box<dyn CursorRwDyn<A>>> {}
-
-    fn create_cursor(&self) -> PersistenceResult<Box<dyn Cursor<A>>> {}
+    type CrossTxnCursor = LmdbCrossTxnCursor;
+    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
+    
+    }
 }
 
 pub struct LmdbCrossTxnCursor {
+    managers: UniversalMap<String>,
     cursors: UniversalMap<String>,
 }
 
 impl CrossTxnCursor for LmdbCrossTxnCursor {
-    fn cursor_rw(&self, key: &CursorRwKey<A>) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+    fn cursor_rw<A>(&self, key: &CursorRwKey<A>) -> PersistenceResult<Box<dyn CursorRw<A>>> {
         self.cursors
             .get(key)
             .map(|x| Ok(x))
