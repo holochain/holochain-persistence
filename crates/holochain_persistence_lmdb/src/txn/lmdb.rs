@@ -11,7 +11,8 @@ use holochain_persistence_api::{
     error::*,
     has_uuid::HasUuid,
     reporting::{ReportStorage, StorageReport},
-    txn::{Cursor, CursorProvider, DefaultPersistenceManager},
+    txn::*,
+    univ_map::*,
 };
 use rkv::EnvironmentFlags;
 use serde::de::DeserializeOwned;
@@ -238,6 +239,45 @@ pub struct LmdbCursorProvider<A: Attribute> {
 
     /// Environment flags for staging databases.
     staging_env_flags: Option<EnvironmentFlags>,
+}
+
+pub struct LmdbCrossTxnCursorProvider {
+    /// Path prefix to generate staging databases
+    staging_path_prefix: PathBuf,
+
+    /// Initial map size of staging databases
+    staging_initial_map_size: Option<usize>,
+
+    /// Environment flags for staging databases.
+    staging_env_flags: Option<EnvironmentFlags>,
+
+    managers: UniversalMap<String>,
+}
+
+impl CrossTxnCursorProvider for LmdbCrossTxnCursorProvider {
+    fn create_cursor_rw(&self) -> PersistenceResult<Box<dyn CursorRwDyn<A>>> {}
+
+    fn create_cursor(&self) -> PersistenceResult<Box<dyn Cursor<A>>> {}
+}
+
+pub struct LmdbCrossTxnCursor {
+    cursors: UniversalMap<String>,
+}
+
+impl CrossTxnCursor for LmdbCrossTxnCursor {
+    fn cursor_rw(&self, key: &CursorRwKey<A>) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+        self.cursors
+            .get(key)
+            .map(|x| Ok(x))
+            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key)))
+    }
+}
+
+impl LmdbCrossTxnCursor {
+    fn add_database(&self, key: &CursorRwKey<A>, cursor: Box<dyn CursorRw<A>>) -> Self {
+        self.cursors.insert(key, cursor);
+        self
+    }
 }
 
 /// Name of CAS staging database

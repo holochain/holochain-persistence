@@ -297,6 +297,9 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 
 pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
 
+pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
+pub type CursorKey<A> = Key<String, Box<dyn Cursor<A>>>;
+
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both
 /// the stores or not, depending on implementation.
@@ -307,7 +310,7 @@ pub trait PersistenceManagerSuite: CrossTxnCursorProvider {
     ) -> Option<&Box<dyn PersistenceManagerDyn<A>>>;
 }
 
-pub trait CrossTransactionalCursor: Writer {
+pub trait CrossTxnCursor: Writer {
     fn cursor_rw<A: Attribute>(
         &self,
         key: &ManagerKey<A>,
@@ -316,19 +319,19 @@ pub trait CrossTransactionalCursor: Writer {
 }
 
 pub trait CrossTxnCursorProvider {
-    type CrossTxnCursor: CrossTransactionalCursor;
+    type CrossTxnCursor: CrossTxnCursor;
     fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor>;
 }
 
-pub struct DefaultCrossTransactionalCursor;
+pub struct DefaultCrossTxnCursor;
 
-impl DefaultCrossTransactionalCursor {
+impl DefaultCrossTxnCursor {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl CrossTransactionalCursor for DefaultCrossTransactionalCursor {
+impl CrossTxnCursor for DefaultCrossTxnCursor {
     fn cursor_rw<A: Attribute>(
         &self,
         _key: &ManagerKey<A>,
@@ -340,9 +343,9 @@ impl CrossTransactionalCursor for DefaultCrossTransactionalCursor {
     }
 }
 
-impl Writer for DefaultCrossTransactionalCursor {
+impl Writer for DefaultCrossTxnCursor {
     fn commit(self) -> PersistenceResult<()> {
-        Err("cross transactinal cursors unsupported: commit failed".into())
+        Err("cross transactional cursors unsupported: commit failed".into())
     }
 }
 
