@@ -19,7 +19,7 @@ pub const EAV_BUCKET: &str = "EAV";
 #[derive(Clone)]
 pub struct EavLmdbStorage<A: Attribute> {
     id: Uuid,
-    lmdb: LmdbInstance,
+    pub lmdb: LmdbInstance,
     attribute: PhantomData<A>,
 }
 

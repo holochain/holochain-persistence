@@ -22,7 +22,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
-
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct LmdbCursor<A: Attribute> {
@@ -32,25 +31,35 @@ pub struct LmdbCursor<A: Attribute> {
     staging_eav_db: EavLmdbStorage<A>,
 }
 
-impl<A: Attribute + Sync + Send + DeserializeOwned> LmdbCursor<A> {
-    /// Internal commit function which extracts `StoreError::MapFull` into the success value of
-    /// a result where `true` indicates the commit is successful, and `false` means the map was
-    /// full and retry is required with the newly allocated map size.
-    fn commit_internal(&self) -> PersistenceResult<bool> {
-        trace!("writer: commit_internal start");
-        let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
-        trace!("writer: commit_internal got staging env lock");
-        let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
-        trace!("writer: commit_internal got staging reader");
+/// Internal commit function which extracts `StoreError::MapFull` into the success value of
+/// a result where `true` indicates the commit is successful, and `false` means the map was
+/// full and retry is required with the newly allocated map size.
+fn commit_internal<A: Attribute + Sync + Send + DeserializeOwned>(
+    dbs: Vec<(LmdbInstance, LmdbInstance)>,
+) -> PersistenceResult<bool> {
+    let opt = dbs.iter().next();
 
-        let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
-        trace!("writer: commit_internal got env write lock");
-        let mut writer = env_lock.write().unwrap();
-        trace!("writer: commit_internal got writer");
+    if opt.is_none() {
+        return Ok(true);
+    }
 
-        let copy_result = self
-            .staging_cas_db
-            .copy_all(&staging_reader, &self.cas_db, &mut writer);
+    let (staging_rkv, prim_rkv) = opt
+        .map(|(staging, prim)| (staging.rkv(), prim.rkv()))
+        .unwrap();
+
+    trace!("writer: commit_internal start");
+    let staging_env_lock = staging_rkv.read().unwrap();
+    trace!("writer: commit_internal got staging env lock");
+    let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
+    trace!("writer: commit_internal got staging reader");
+
+    let env_lock = prim_rkv.write().unwrap();
+    trace!("writer: commit_internal got env write lock");
+    let mut writer = env_lock.write().unwrap();
+    trace!("writer: commit_internal got writer");
+
+    for (primary_db, staging_db) in dbs {
+        let copy_result = staging_db.copy_all(&staging_reader, &primary_db, &mut writer);
 
         if is_store_full_result(&copy_result) {
             drop(writer);
@@ -62,52 +71,43 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> LmdbCursor<A> {
             return Ok(false);
         }
         copy_result.map_err(to_api_error)?;
-
-        let copy_result = self
-            .staging_eav_db
-            .copy_all(&staging_reader, &self.eav_db, &mut writer);
-
-        if is_store_full_result(&copy_result) {
-            drop(writer);
-            trace!("writer: commit_internal store full while adding eav data");
-            let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-            env_lock
-                .set_map_size(map_size * map_growth_factor())
-                .map_err(to_api_error)?;
-            return Ok(false);
-        }
-
-        drop(staging_reader);
-        drop(staging_env_lock);
-        writer
-            .commit()
-            .map(|()| {
-                trace!("writer: commit_internal success");
-                Ok(true)
-            })
-            .unwrap_or_else(|e| {
-                trace!("writer: commit_internal error on commit");
-                if is_store_full_error(&e) {
-                    trace!("writer: commit_internal store full on commit");
-                    let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                    env_lock
-                        .set_map_size(map_size * map_growth_factor())
-                        .map_err(to_api_error)?;
-                    Ok(false)
-                } else {
-                    trace!("writer: commit_internal generic error on commit");
-                    Err(to_api_error(e))
-                }
-            })
     }
+
+    drop(staging_reader);
+    drop(staging_env_lock);
+    writer
+        .commit()
+        .map(|()| {
+            trace!("writer: commit_internal success");
+            Ok(true)
+        })
+        .unwrap_or_else(|e| {
+            trace!("writer: commit_internal error on commit");
+            if is_store_full_error(&e) {
+                trace!("writer: commit_internal store full on commit");
+                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                env_lock
+                    .set_map_size(map_size * map_growth_factor())
+                    .map_err(to_api_error)?;
+                Ok(false)
+            } else {
+                trace!("writer: commit_internal generic error on commit");
+                Err(to_api_error(e))
+            }
+        })
 }
 
 impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
     for LmdbCursor<A>
 {
     fn commit(self) -> PersistenceResult<()> {
+        let dbs = vec![
+            (self.staging_cas_db.lmdb, self.cas_db.lmdb),
+            (self.staging_eav_db.lmdb, self.eav_db.lmdb),
+        ];
+
         loop {
-            let committed = self.commit_internal()?;
+            let committed = commit_internal(dbs)?;
             if committed {
                 return Ok(());
             }
@@ -257,10 +257,15 @@ pub struct LmdbCrossTxnCursorProvider {
 impl CrossTxnCursorProvider for LmdbCrossTxnCursorProvider {
     type CrossTxnCursor = LmdbCrossTxnCursor;
     fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
-    
+        LmdbCrossTxnCursor::new(self.managers)
     }
 }
 
+impl Writer for LmdbCrossTxnCursor {
+    fn commit(self) -> PersistenceResult<()> {
+        unimplemented!()
+    }
+}
 pub struct LmdbCrossTxnCursor {
     managers: UniversalMap<String>,
     cursors: UniversalMap<String>,
@@ -276,9 +281,13 @@ impl CrossTxnCursor for LmdbCrossTxnCursor {
 }
 
 impl LmdbCrossTxnCursor {
-    fn add_database(&self, key: &CursorRwKey<A>, cursor: Box<dyn CursorRw<A>>) -> Self {
+    fn add_database<A: Attribute + Sync + Send>(
+        &self,
+        key: &CursorRwKey<A>,
+        cursor: Box<dyn CursorRw<A>>,
+    ) -> Self {
         self.cursors.insert(key, cursor);
-        self
+        *self
     }
 }
 
