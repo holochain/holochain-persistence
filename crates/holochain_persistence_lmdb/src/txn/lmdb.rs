@@ -34,7 +34,8 @@ pub struct LmdbCursor<A: Attribute> {
 /// Internal commit function which extracts `StoreError::MapFull` into the success value of
 /// a result where `true` indicates the commit is successful, and `false` means the map was
 /// full and retry is required with the newly allocated map size.
-fn commit_internal<A: Attribute + Sync + Send + DeserializeOwned>(
+fn commit_internal(
+    // [(staging, primary)]
     dbs: Vec<(LmdbInstance, LmdbInstance)>,
 ) -> PersistenceResult<bool> {
     let opt = dbs.iter().next();
