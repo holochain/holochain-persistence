@@ -21,6 +21,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+
+use std::sync::Arc;
+
 use uuid::Uuid;
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
@@ -242,7 +245,7 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
-pub struct LmdbCrossTxnCursorProvider {
+pub struct LmdbEnvironment {
     /// Path prefix to generate staging databases
     staging_path_prefix: PathBuf,
 
@@ -252,36 +255,67 @@ pub struct LmdbCrossTxnCursorProvider {
     /// Environment flags for staging databases.
     staging_env_flags: Option<EnvironmentFlags>,
 
-    managers: UniversalMap<String>,
+    cursor_providers: Arc<UniversalMap<String>>,
 }
 
-impl CrossTxnCursorProvider for LmdbCrossTxnCursorProvider {
-    type CrossTxnCursor = LmdbCrossTxnCursor;
-    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
-        LmdbCrossTxnCursor::new(self.managers)
+impl LmdbEnvironment {
+
+    pub fn new<P:Into<PathBuf>>(
+        staging_path_prefix: P,
+        staging_initial_map_size: Option<usize>,
+        staging_env_flags: Option<EnvironmentFlags>,
+        cursor_providers: Arc<UniversalMap<String>>
+    ) -> Self {
+        let staging_path_prefix : PathBuf = staging_path_prefix.into();
+        Self {
+           staging_path_prefix,
+           staging_initial_map_size,
+           staging_env_flags,
+           cursor_providers
+        }
+    }
+
+}
+
+impl Environment for LmdbEnvironment {
+    type EnvCursor = LmdbEnvCursor;
+    fn create_cursor(&self) -> PersistenceResult<Self::EnvCursor> {
+        LmdbEnvCursor::new(self)
     }
 }
 
-impl Writer for LmdbCrossTxnCursor {
+impl Writer for LmdbEnvCursor {
     fn commit(self) -> PersistenceResult<()> {
         unimplemented!()
     }
 }
-pub struct LmdbCrossTxnCursor {
-    managers: UniversalMap<String>,
-    cursors: UniversalMap<String>,
+
+pub struct LmdbEnvCursor {
+    env: Arc<LmdbEnvironment>,
+    cursors: Arc<UniversalMap<String>>,
 }
 
-impl CrossTxnCursor for LmdbCrossTxnCursor {
+impl LmdbEnvCursor {
+    fn new(env: Arc<LmdbEnvironment>) -> Self {
+        Self { env, cursors: Arc::new(UniversalMap::new()) }
+    }
+
+}   
+impl EnvCursor for LmdbEnvCursor {
     fn cursor_rw<A>(&self, key: &CursorRwKey<A>) -> PersistenceResult<Box<dyn CursorRw<A>>> {
         self.cursors
             .get(key)
             .map(|x| Ok(x))
             .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key)))
     }
+
+    fn cursor<A>(&self, key: &CursorKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>> {
+        unimplemented!()
+    }
+
 }
 
-impl LmdbCrossTxnCursor {
+impl LmdbEnvCursor {
     fn add_database<A: Attribute + Sync + Send>(
         &self,
         key: &CursorRwKey<A>,

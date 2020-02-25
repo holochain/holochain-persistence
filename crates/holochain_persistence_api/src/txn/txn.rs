@@ -294,44 +294,33 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn get_id(&self) -> Uuid;
 }
 
-pub type ManagerKey<A> = Key<String, Box<dyn PersistenceManagerDyn<A>>>;
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
 pub type CursorKey<A> = Key<String, Box<dyn Cursor<A>>>;
 
-pub trait CrossTxnCursor: Writer {
+pub trait EnvCursor: Writer {
     fn cursor_rw<A: Attribute>(
         &self,
         key: &CursorRwKey<A>
     ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
     fn cursor<A: Attribute>(&self, key: &CursorKey<A>) ->
-        PersistenceResult<Box<dyn Cursor<A>>>;
+       PersistenceResult<Box<dyn Cursor<A>>>;
 }
 
-pub trait CrossTxnCursorProvider {
-    type CrossTxnCursor: CrossTxnCursor;
-    fn create_cross_txn_cursor(&self) ->
-        PersistenceResult<Self::CrossTxnCursor>;
+pub trait Environment {
+    type EnvCursor: EnvCursor;
+    fn create_cursor(&self) ->
+        PersistenceResult<Self::EnvCursor>;
 }
 
-/// A high level api which brings together a CAS, EAV, and
-/// Cursor over them. A cursor may start transactions over both
-/// the stores or not, depending on implementation.
-pub trait PersistenceManagerSuite: CrossTxnCursorProvider {
-/*    fn manager<A: Attribute + 'static>(
-        &self,
-        key: &ManagerKey<A>,
-    ) -> Option<&Box<dyn PersistenceManagerDyn<A>>>;*/
-}
+pub struct DefaultEnvironment;
 
-pub struct DefaultCrossTxnCursor;
-
-impl DefaultCrossTxnCursor {
+impl DefaultEnvironment {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl CrossTxnCursor for DefaultCrossTxnCursor {
+impl EnvCursor for DefaultEnvironment {
     fn cursor_rw<A: Attribute>(
         &self,
         _key: &CursorRwKey<A>,
@@ -345,35 +334,11 @@ impl CrossTxnCursor for DefaultCrossTxnCursor {
     }
 }
 
-impl Writer for DefaultCrossTxnCursor {
+impl Writer for DefaultEnvironment {
     fn commit(self) -> PersistenceResult<()> {
         Err("cross transactional cursors unsupported: commit failed".into())
     }
 }
-
-/*
-pub struct DefaultPersistenceManagerSuite<CTP: CrossTxnCursorProvider> {
-    persistence_managers: UniversalMap<String>,
-    cross_txn_cursor_provider: CTP,
-}
-
-impl<CTP: CrossTxnCursorProvider> PersistenceManagerSuite for DefaultPersistenceManagerSuite<CTP> {
-   fn manager<A: Attribute + 'static>(
-        &self,
-        key: &ManagerKey<A>,
-    ) -> Option<&Box<dyn PersistenceManagerDyn<A>>> {
-        self.persistence_managers.get(key)
-    }
-}
-
-
-impl<CTP: CrossTxnCursorProvider> CrossTxnCursorProvider for DefaultPersistenceManagerSuite<CTP> {
-    type CrossTxnCursor = CTP::CrossTxnCursor;
-    fn create_cross_txn_cursor(&self) -> PersistenceResult<Self::CrossTxnCursor> {
-        self.cross_txn_cursor_provider.create_cross_txn_cursor()
-    }
-}
-*/
 
 /// A high level api which brings together a CAS, EAV, and
 /// Cursor over them. A cursor may start transactions over both

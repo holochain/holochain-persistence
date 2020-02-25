@@ -2,7 +2,9 @@ use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 #[derive(Clone, Debug)]
 pub struct Key<K, V>(K, PhantomData<V>);
 
+
 pub struct UniversalMap<K>(HashMap<K, Box<dyn Any>>);
+
 
 impl<K, V> Key<K, V> {
     pub fn new(key: K) -> Self {
@@ -18,8 +20,7 @@ impl<K: Hash + Eq + PartialEq, V> From<K> for Key<K, V> {
 
 impl<K: Hash + Eq> Default for UniversalMap<K> {
     fn default() -> Self {
-        UniversalMap::new()
-    }
+        UniversalMap::new() }
 }
 
 impl<K: Eq + Hash> UniversalMap<K> {
@@ -32,12 +33,23 @@ impl<K: Eq + Hash> UniversalMap<K> {
         result
     }
 
-    pub fn get<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {
+    pub fn get_ref<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {
         match self.0.get(&key.0) {
             Some(value) => value.downcast_ref::<V>(),
             None => None,
         }
     }
+
+    pub fn get_box<V: 'static>(&self, key: &Key<K, V>) -> Option<Box<V>> {
+        match self.0.get(&key.0) {
+            Some(value) => {
+                let boxed : Option<Box<V>> = value.downcast::<V>().ok();
+                boxed
+            }
+            None => None,
+        }
+    }
+
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
