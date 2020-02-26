@@ -33,27 +33,21 @@ impl<K: Eq + Hash> UniversalMap<K> {
         result
     }
 
-    pub fn get_ref<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {
+    pub fn get<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {
         match self.0.get(&key.0) {
             Some(value) => value.downcast_ref::<V>(),
             None => None,
         }
     }
 
-    pub fn get_box<V: 'static>(&self, key: &Key<K, V>) -> Option<Box<V>> {
-        match self.0.get(&key.0) {
-            Some(value) => {
-                let boxed : Option<Box<V>> = value.downcast::<V>().ok();
-                boxed
-            }
-            None => None,
-        }
-    }
-
-
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
 }
 
 #[cfg(test)]
@@ -68,7 +62,9 @@ pub mod tests {
         let key2: Key<_, bool> = Key::new("def");
         univ_map.insert(key.clone(), 123);
         univ_map.insert(key2.clone(), true);
-        assert_eq!(univ_map.get(&key), Some(&123));
-        assert_eq!(univ_map.get(&key2), Some(&true))
+        assert_eq!(univ_map.get_ref(&key), Some(&123));
+        assert_eq!(univ_map.get_ref(&key2), Some(&true))
     }
+
+
 }

@@ -295,20 +295,17 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 }
 
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
-pub type CursorKey<A> = Key<String, Box<dyn Cursor<A>>>;
 
 pub trait EnvCursor: Writer {
-    fn cursor_rw<A: Attribute>(
+    fn cursor_rw<A: Attribute+'static>(
         &self,
         key: &CursorRwKey<A>
-    ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
-    fn cursor<A: Attribute>(&self, key: &CursorKey<A>) ->
-       PersistenceResult<Box<dyn Cursor<A>>>;
+    ) -> PersistenceResult<&Box<dyn CursorRw<A>>>;
 }
 
 pub trait Environment {
     type EnvCursor: EnvCursor;
-    fn create_cursor(&self) ->
+    fn create_cursor(self:Arc<Self>) ->
         PersistenceResult<Self::EnvCursor>;
 }
 
@@ -321,16 +318,11 @@ impl DefaultEnvironment {
 }
 
 impl EnvCursor for DefaultEnvironment {
-    fn cursor_rw<A: Attribute>(
+    fn cursor_rw<A: Attribute+'static>(
         &self,
         _key: &CursorRwKey<A>,
-    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+    ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
         Err("cross transactional read/write cursors unsupported".into())
-    }
-
-    fn cursor<A: Attribute>(&self, _key: &CursorKey<A>) ->
-        PersistenceResult<Box<dyn Cursor<A>>> {
-        Err("cross transactional cursors unsupported".into())
     }
 }
 

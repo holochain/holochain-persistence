@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use std::sync::Arc;
+use std::sync::{RwLock, Arc};
 
 use uuid::Uuid;
 /// A cursor over an lmdb environment
@@ -62,7 +62,7 @@ fn commit_internal(
     let mut writer = env_lock.write().unwrap();
     trace!("writer: commit_internal got writer");
 
-    for (primary_db, staging_db) in dbs {
+    for (primary_db, staging_db) in &dbs {
         let copy_result = staging_db.copy_all(&staging_reader, &primary_db, &mut writer);
 
         if is_store_full_result(&copy_result) {
@@ -111,7 +111,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
         ];
 
         loop {
-            let committed = commit_internal(dbs)?;
+            let committed = commit_internal(dbs.clone())?;
             if committed {
                 return Ok(());
             }
@@ -279,8 +279,8 @@ impl LmdbEnvironment {
 
 impl Environment for LmdbEnvironment {
     type EnvCursor = LmdbEnvCursor;
-    fn create_cursor(&self) -> PersistenceResult<Self::EnvCursor> {
-        LmdbEnvCursor::new(self)
+    fn create_cursor(self:Arc<Self>) -> PersistenceResult<Self::EnvCursor> {
+        Ok(LmdbEnvCursor::new(self.clone()))
     }
 }
 
@@ -292,37 +292,35 @@ impl Writer for LmdbEnvCursor {
 
 pub struct LmdbEnvCursor {
     env: Arc<LmdbEnvironment>,
-    cursors: Arc<UniversalMap<String>>,
+    cursors: Arc<RwLock<UniversalMap<String>>>,
 }
 
 impl LmdbEnvCursor {
     fn new(env: Arc<LmdbEnvironment>) -> Self {
-        Self { env, cursors: Arc::new(UniversalMap::new()) }
+        Self { env, cursors: Arc::new(RwLock::new(UniversalMap::new())) }
     }
+}
 
-}   
 impl EnvCursor for LmdbEnvCursor {
-    fn cursor_rw<A>(&self, key: &CursorRwKey<A>) -> PersistenceResult<Box<dyn CursorRw<A>>> {
-        self.cursors
+    fn cursor_rw<A:'static>(&self, key: &CursorRwKey<A>) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
+        let read = self.cursors.read().unwrap();
+        read
             .get(key)
-            .map(|x| Ok(x))
-            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key)))
+            .map(|x| Ok(x.clone()))
+            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
     }
 
-    fn cursor<A>(&self, key: &CursorKey<A>) -> PersistenceResult<Box<dyn Cursor<A>>> {
-        unimplemented!()
-    }
 
 }
 
 impl LmdbEnvCursor {
-    fn add_database<A: Attribute + Sync + Send>(
-        &self,
+    fn add_database<A: Attribute + Sync + Send + 'static>(
+        &mut self,
         key: &CursorRwKey<A>,
         cursor: Box<dyn CursorRw<A>>,
-    ) -> Self {
-        self.cursors.insert(key, cursor);
-        *self
+    ) {
+        self.cursors.write().unwrap()
+            .insert(key.clone(), cursor);
     }
 }
 
@@ -380,7 +378,7 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
     }
 
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
-        self.create_cursor_rw()
+        CursorProvider::create_cursor_rw(self)
     }
 }
 
