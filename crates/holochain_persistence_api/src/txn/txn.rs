@@ -297,16 +297,15 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
 
 pub trait EnvCursor: Writer {
-    fn cursor_rw<A: Attribute+'static>(
+    fn cursor_rw<A: Attribute + 'static>(
         &self,
-        key: &CursorRwKey<A>
+        key: &CursorRwKey<A>,
     ) -> PersistenceResult<&Box<dyn CursorRw<A>>>;
 }
 
 pub trait Environment {
     type EnvCursor: EnvCursor;
-    fn create_cursor(self:Arc<Self>) ->
-        PersistenceResult<Self::EnvCursor>;
+    fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor>;
 }
 
 pub struct DefaultEnvironment;
@@ -318,7 +317,7 @@ impl DefaultEnvironment {
 }
 
 impl EnvCursor for DefaultEnvironment {
-    fn cursor_rw<A: Attribute+'static>(
+    fn cursor_rw<A: Attribute + 'static>(
         &self,
         _key: &CursorRwKey<A>,
     ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {

@@ -2,9 +2,7 @@ use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 #[derive(Clone, Debug)]
 pub struct Key<K, V>(K, PhantomData<V>);
 
-
 pub struct UniversalMap<K>(HashMap<K, Box<dyn Any>>);
-
 
 impl<K, V> Key<K, V> {
     pub fn new(key: K) -> Self {
@@ -20,7 +18,8 @@ impl<K: Hash + Eq + PartialEq, V> From<K> for Key<K, V> {
 
 impl<K: Hash + Eq> Default for UniversalMap<K> {
     fn default() -> Self {
-        UniversalMap::new() }
+        UniversalMap::new()
+    }
 }
 
 impl<K: Eq + Hash> UniversalMap<K> {
@@ -47,7 +46,6 @@ impl<K: Eq + Hash> UniversalMap<K> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
-
 }
 
 #[cfg(test)]
@@ -65,6 +63,4 @@ pub mod tests {
         assert_eq!(univ_map.get_ref(&key), Some(&123));
         assert_eq!(univ_map.get_ref(&key2), Some(&true))
     }
-
-
 }

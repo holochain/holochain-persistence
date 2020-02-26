@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use std::sync::{RwLock, Arc};
+use std::sync::{Arc, RwLock};
 
 use uuid::Uuid;
 /// A cursor over an lmdb environment
@@ -259,27 +259,25 @@ pub struct LmdbEnvironment {
 }
 
 impl LmdbEnvironment {
-
-    pub fn new<P:Into<PathBuf>>(
+    pub fn new<P: Into<PathBuf>>(
         staging_path_prefix: P,
         staging_initial_map_size: Option<usize>,
         staging_env_flags: Option<EnvironmentFlags>,
-        cursor_providers: Arc<UniversalMap<String>>
+        cursor_providers: Arc<UniversalMap<String>>,
     ) -> Self {
-        let staging_path_prefix : PathBuf = staging_path_prefix.into();
+        let staging_path_prefix: PathBuf = staging_path_prefix.into();
         Self {
-           staging_path_prefix,
-           staging_initial_map_size,
-           staging_env_flags,
-           cursor_providers
+            staging_path_prefix,
+            staging_initial_map_size,
+            staging_env_flags,
+            cursor_providers,
         }
     }
-
 }
 
 impl Environment for LmdbEnvironment {
     type EnvCursor = LmdbEnvCursor;
-    fn create_cursor(self:Arc<Self>) -> PersistenceResult<Self::EnvCursor> {
+    fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor> {
         Ok(LmdbEnvCursor::new(self.clone()))
     }
 }
@@ -297,20 +295,23 @@ pub struct LmdbEnvCursor {
 
 impl LmdbEnvCursor {
     fn new(env: Arc<LmdbEnvironment>) -> Self {
-        Self { env, cursors: Arc::new(RwLock::new(UniversalMap::new())) }
+        Self {
+            env,
+            cursors: Arc::new(RwLock::new(UniversalMap::new())),
+        }
     }
 }
 
 impl EnvCursor for LmdbEnvCursor {
-    fn cursor_rw<A:'static>(&self, key: &CursorRwKey<A>) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
+    fn cursor_rw<A: 'static>(
+        &self,
+        key: &CursorRwKey<A>,
+    ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
         let read = self.cursors.read().unwrap();
-        read
-            .get(key)
+        read.get(key)
             .map(|x| Ok(x.clone()))
             .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
     }
-
-
 }
 
 impl LmdbEnvCursor {
@@ -319,8 +320,7 @@ impl LmdbEnvCursor {
         key: &CursorRwKey<A>,
         cursor: Box<dyn CursorRw<A>>,
     ) {
-        self.cursors.write().unwrap()
-            .insert(key.clone(), cursor);
+        self.cursors.write().unwrap().insert(key.clone(), cursor);
     }
 }
 
