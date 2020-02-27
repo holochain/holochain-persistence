@@ -208,7 +208,6 @@ impl<A: Attribute> FetchContent for LmdbCursor<A> {
             maybe_content
         );
         if let Some(content) = maybe_content {
-            self.staging_cas_db.add(&content)?;
             Ok(Some(content))
         } else {
             Ok(None)
@@ -250,9 +249,6 @@ impl<A: Attribute + serde::de::DeserializeOwned> FetchEavi<A> for LmdbCursor<A> 
 
         let eavis = self.eav_db.fetch_eavi(query)?;
 
-        for eavi in &eavis {
-            self.staging_eav_db.add_eavi(eavi)?;
-        }
         Ok(eavis)
     }
 }
