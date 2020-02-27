@@ -331,7 +331,7 @@ impl EnvCursor for LmdbEnvCursor {
             .cursors
             .get(key)
             .map(|x| Ok(x.clone()))
-            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()));
+            .unwrap_or_else(|| Err(format!("Cursor {:?} does not exist", key).into()));
 
         if maybe_cursor.is_ok() {
             return maybe_cursor;
@@ -345,7 +345,7 @@ impl EnvCursor for LmdbEnvCursor {
                 let _result = self.cursors.insert(key.clone(), cursor);
                 self.cursor_rw(key)
             } else {
-                Err(format!("Database {:?} does not exist", prov_key).into())
+                Err(format!("Cursor provider {:?} does not exist", prov_key).into())
             }
         }
     }
