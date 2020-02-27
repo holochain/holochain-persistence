@@ -8,6 +8,17 @@ impl<K, V> Key<K, V> {
     pub fn new(key: K) -> Self {
         Self(key, PhantomData)
     }
+
+    pub fn key(&self) -> &K {
+        &self.0
+    }
+}
+
+impl<K: Clone, V> Key<K, V> {
+    pub fn with_value_type<VV>(&self) -> Key<K, VV> {
+        let key: Key<K, VV> = Key::new(self.0.clone());
+        key
+    }
 }
 
 impl<K: Hash + Eq + PartialEq, V> From<K> for Key<K, V> {

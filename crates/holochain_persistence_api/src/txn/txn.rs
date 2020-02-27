@@ -297,10 +297,10 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
 
 pub trait EnvCursor: Writer {
-    fn cursor_rw<A: Attribute + 'static>(
-        &self,
+    fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
+        &mut self,
         key: &CursorRwKey<A>,
-    ) -> PersistenceResult<&Box<dyn CursorRw<A>>>;
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
 }
 
 pub trait Environment {
@@ -317,10 +317,10 @@ impl DefaultEnvironment {
 }
 
 impl EnvCursor for DefaultEnvironment {
-    fn cursor_rw<A: Attribute + 'static>(
-        &self,
+    fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
+        &mut self,
         _key: &CursorRwKey<A>,
-    ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
         Err("cross transactional read/write cursors unsupported".into())
     }
 }

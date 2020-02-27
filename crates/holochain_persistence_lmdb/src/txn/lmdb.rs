@@ -305,14 +305,29 @@ impl LmdbEnvCursor {
 }
 
 impl EnvCursor for LmdbEnvCursor {
-    fn cursor_rw<A: 'static>(
-        &self,
+    fn cursor_rw<A: 'static + Attribute + DeserializeOwned>(
+        &mut self,
         key: &CursorRwKey<A>,
-    ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
-        self.cursors
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+        let maybe_cursor = self
+            .cursors
             .get(key)
             .map(|x| Ok(x.clone()))
-            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
+            .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()));
+
+        if maybe_cursor.is_ok() {
+            return maybe_cursor;
+        } else {
+            let prov_key: Key<String, LmdbCursorProvider<A>> = Key::with_value_type(key);
+            let provider: Option<&LmdbCursorProvider<A>> = self.env.cursor_providers.get(&prov_key);
+            if let Some(provider) = provider {
+                let cursor = Box::new(CursorProvider::create_cursor(provider)?);
+                let _result = self.cursors.insert(key.clone(), cursor);
+                self.cursor_rw(key)
+            } else {
+                Err(format!("Database {:?} does not exist", prov_key).into())
+            }
+        }
     }
 }
 
