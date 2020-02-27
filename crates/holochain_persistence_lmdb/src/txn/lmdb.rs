@@ -20,9 +20,10 @@ use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
+    any::Any,
 };
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use uuid::Uuid;
 /// A cursor over an lmdb environment
@@ -245,6 +246,7 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
+#[allow(dead_code)]
 pub struct LmdbEnvironment {
     /// Path prefix to generate staging databases
     staging_path_prefix: PathBuf,
@@ -255,15 +257,17 @@ pub struct LmdbEnvironment {
     /// Environment flags for staging databases.
     staging_env_flags: Option<EnvironmentFlags>,
 
-    cursor_providers: Arc<UniversalMap<String>>,
+    cursor_providers: CursorProviders
 }
+
+type CursorProviders = UniversalMap<String, Box<dyn CursorProviderDyn<dyn Any>>>;
 
 impl LmdbEnvironment {
     pub fn new<P: Into<PathBuf>>(
         staging_path_prefix: P,
         staging_initial_map_size: Option<usize>,
         staging_env_flags: Option<EnvironmentFlags>,
-        cursor_providers: Arc<UniversalMap<String>>,
+        cursor_providers: CursorProviders,
     ) -> Self {
         let staging_path_prefix: PathBuf = staging_path_prefix.into();
         Self {
@@ -288,16 +292,19 @@ impl Writer for LmdbEnvCursor {
     }
 }
 
+type Cursors = UniversalMap<String, Box<dyn CursorRwDyn<dyn Any>>>;
+
+#[allow(dead_code)]
 pub struct LmdbEnvCursor {
     env: Arc<LmdbEnvironment>,
-    cursors: Arc<RwLock<UniversalMap<String>>>,
+    cursors: Cursors
 }
 
 impl LmdbEnvCursor {
     fn new(env: Arc<LmdbEnvironment>) -> Self {
         Self {
             env,
-            cursors: Arc::new(RwLock::new(UniversalMap::new())),
+            cursors: UniversalMap::new()
         }
     }
 }
@@ -307,20 +314,20 @@ impl EnvCursor for LmdbEnvCursor {
         &self,
         key: &CursorRwKey<A>,
     ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
-        let read = self.cursors.read().unwrap();
-        read.get(key)
+        self.cursors.get(key)
             .map(|x| Ok(x.clone()))
             .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
     }
 }
 
+#[allow(dead_code)]
 impl LmdbEnvCursor {
     fn add_database<A: Attribute + Sync + Send + 'static>(
         &mut self,
         key: &CursorRwKey<A>,
         cursor: Box<dyn CursorRw<A>>,
     ) {
-        self.cursors.write().unwrap().insert(key.clone(), cursor);
+        let _result = self.cursors.insert(key.clone(), cursor);
     }
 }
 
@@ -439,7 +446,7 @@ pub mod tests {
             storage::ExampleLink,
         },
         eav::{AddEavi, Attribute, EntityAttributeValueIndex, ExampleAttribute},
-        txn::*,
+        //txn::*,
     };
     use tempfile::tempdir;
 
