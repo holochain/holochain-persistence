@@ -493,6 +493,52 @@ pub mod tests {
         )
     }
 
+    fn new_test_cursor_provider<
+        A: Attribute + DeserializeOwned,
+        EP: AsRef<Path> + Clone,
+        SP: AsRef<Path>,
+    >(
+        env_path: EP,
+        staging_path_prefix: Option<SP>,
+        initial_map_size: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+        staging_initial_map_size: Option<usize>,
+        staging_env_flags: Option<EnvironmentFlags>,
+    ) -> LmdbCursorProvider<A> {
+        let cas_db_name = crate::cas::lmdb::CAS_BUCKET;
+        let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
+        let db_names = vec![cas_db_name, eav_db_name];
+
+        // Ensure exactly one enviroment for the primary database by taking
+        // advantage of the `rkv::Manager`.
+        let use_rkv_manager = true;
+
+        let dbs = LmdbInstance::new_all(
+            db_names.as_slice(),
+            env_path,
+            initial_map_size,
+            env_flags,
+            use_rkv_manager.into(),
+        );
+
+        let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap().clone());
+        let eav_db: EavLmdbStorage<A> =
+            EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap().clone());
+
+        let staging_path_prefix = staging_path_prefix
+            .map(|p| p.as_ref().to_path_buf())
+            .unwrap_or_else(|| std::env::temp_dir());
+
+        let cursor_provider = LmdbCursorProvider {
+            cas_db: cas_db.clone(),
+            eav_db: eav_db.clone(),
+            staging_path_prefix,
+            staging_initial_map_size,
+            staging_env_flags,
+        };
+        cursor_provider
+    }
+
     #[test]
     fn txn_lmdb_cas_round_trip() {
         enable_logging_for_test(true);
@@ -686,5 +732,45 @@ pub mod tests {
         assert!(cursor.add(&entity_content).is_ok());
         assert!(cursor.add_eavi(&eavi).is_ok());
         assert!(cursor.commit().is_ok());
+    }
+
+    #[test]
+    fn can_commit_transactions_across_databases() {
+        enable_logging_for_test(true);
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        let staging_path: Option<String> = None;
+        let manager: LmdbCursorProvider<ExampleAttribute> = new_test_cursor_provider(
+            temp_path,
+            staging_path,
+            Some(1024 * 1024),
+            None,
+            Some(1024 * 1024),
+            None,
+        );
+
+        let mut univ_map = UniversalMap::new();
+
+        let key = Key::new("test_dbs".to_string());
+
+        let _result = univ_map.insert(key.clone(), manager);
+        let environment = Arc::new(LmdbEnvironment::new(Arc::new(univ_map)));
+        let data: Vec<u8> = Vec::from(format!("{}", "abc").as_bytes());
+
+        let entity_content: Content = RawString::from("red").into();
+        let eavi = EntityAttributeValueIndex::new(
+            &holochain_persistence_api::hash::HashString::from(data.clone()),
+            &ExampleAttribute::WithoutPayload,
+            &data.into(),
+        )
+        .unwrap();
+
+        let mut env_cursor: LmdbEnvCursor = environment.create_cursor().unwrap();
+        let cursor_key: Key<_, Box<dyn CursorRw<ExampleAttribute>>> = key.clone().with_value_type();
+
+        let cursor = env_cursor.cursor_rw(&cursor_key).unwrap();
+        assert!(cursor.add(&entity_content).is_ok());
+        assert!(cursor.add_eavi(&eavi).is_ok());
+        assert!(env_cursor.commit().is_ok());
     }
 }
