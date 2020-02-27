@@ -277,34 +277,13 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
-#[allow(dead_code)]
 pub struct LmdbEnvironment {
-    /// Path prefix to generate staging databases
-    staging_path_prefix: PathBuf,
-
-    /// Initial map size of staging databases
-    staging_initial_map_size: Option<usize>,
-
-    /// Environment flags for staging databases.
-    staging_env_flags: Option<EnvironmentFlags>,
-
     cursor_providers: Arc<UniversalMap<String>>,
 }
 
 impl LmdbEnvironment {
-    pub fn new<P: Into<PathBuf>>(
-        staging_path_prefix: P,
-        staging_initial_map_size: Option<usize>,
-        staging_env_flags: Option<EnvironmentFlags>,
-        cursor_providers: Arc<UniversalMap<String>>,
-    ) -> Self {
-        let staging_path_prefix: PathBuf = staging_path_prefix.into();
-        Self {
-            staging_path_prefix,
-            staging_initial_map_size,
-            staging_env_flags,
-            cursor_providers,
-        }
+    pub fn new<P: Into<PathBuf>>(cursor_providers: Arc<UniversalMap<String>>) -> Self {
+        Self { cursor_providers }
     }
 }
 
@@ -369,17 +348,6 @@ impl EnvCursor for LmdbEnvCursor {
                 Err(format!("Database {:?} does not exist", prov_key).into())
             }
         }
-    }
-}
-
-#[allow(dead_code)]
-impl LmdbEnvCursor {
-    fn add_database<A: Attribute + Sync + Send + 'static>(
-        &mut self,
-        key: &CursorRwKey<A>,
-        cursor: Box<dyn CursorRw<A>>,
-    ) {
-        self.cursors.insert(key.clone(), cursor);
     }
 }
 
