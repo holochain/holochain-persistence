@@ -442,7 +442,6 @@ pub mod tests {
             storage::ExampleLink,
         },
         eav::{AddEavi, Attribute, EntityAttributeValueIndex, ExampleAttribute},
-        txn::*,
     };
     use tempfile::tempdir;
 

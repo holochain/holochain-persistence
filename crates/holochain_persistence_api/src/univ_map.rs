@@ -60,7 +60,7 @@ pub mod tests {
         let key2: Key<_, bool> = Key::new("def");
         univ_map.insert(key.clone(), 123);
         univ_map.insert(key2.clone(), true);
-        assert_eq!(univ_map.get_ref(&key), Some(&123));
-        assert_eq!(univ_map.get_ref(&key2), Some(&true))
+        assert_eq!(univ_map.get(&key), Some(&123));
+        assert_eq!(univ_map.get(&key2), Some(&true))
     }
 }
