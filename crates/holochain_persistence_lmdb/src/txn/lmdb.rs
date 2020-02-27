@@ -309,7 +309,8 @@ impl EnvCursor for LmdbEnvCursor {
         &self,
         key: &CursorRwKey<A>,
     ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
-        self.cursors.get(key)
+        self.cursors
+            .get(key)
             .map(|x| Ok(x.clone()))
             .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
     }
