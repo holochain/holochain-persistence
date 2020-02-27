@@ -277,12 +277,13 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
+#[derive(Clone)]
 pub struct LmdbEnvironment {
     cursor_providers: Arc<UniversalMap<String>>,
 }
 
 impl LmdbEnvironment {
-    pub fn new<P: Into<PathBuf>>(cursor_providers: Arc<UniversalMap<String>>) -> Self {
+    pub fn new(cursor_providers: Arc<UniversalMap<String>>) -> Self {
         Self { cursor_providers }
     }
 }
@@ -305,7 +306,6 @@ impl Writer for LmdbEnvCursor {
     }
 }
 
-#[allow(dead_code)]
 pub struct LmdbEnvCursor {
     env: Arc<LmdbEnvironment>,
     dbs: Vec<(LmdbInstance, LmdbInstance)>,
