@@ -2,6 +2,7 @@ use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 #[derive(Clone, Debug)]
 pub struct Key<K, V>(K, PhantomData<V>);
 
+#[derive(Shrinkwrap)]
 pub struct UniversalMap<K>(HashMap<K, Box<dyn Any>>);
 
 impl<K, V> Key<K, V> {

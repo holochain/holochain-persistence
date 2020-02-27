@@ -17,6 +17,7 @@ use holochain_persistence_api::{
 use rkv::EnvironmentFlags;
 use serde::de::DeserializeOwned;
 use std::{
+    iter::IntoIterator,
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
@@ -32,6 +33,43 @@ pub struct LmdbCursor<A: Attribute> {
     eav_db: EavLmdbStorage<A>,
     staging_cas_db: LmdbStorage,
     staging_eav_db: EavLmdbStorage<A>,
+}
+
+impl<A:Attribute> IntoIterator for LmdbCursor<A> {
+    type Item = (LmdbInstance, LmdbInstance);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        let dbs = vec![
+            (self.staging_cas_db.lmdb, self.cas_db.lmdb),
+            (self.staging_eav_db.lmdb, self.eav_db.lmdb),
+        ];
+        dbs.into_iter()
+    }
+}
+
+impl<A:Attribute> Into<Vec<(LmdbInstance, LmdbInstance)>> for LmdbCursor<A> {
+
+    fn into(self) -> Vec<(LmdbInstance, LmdbInstance)> {
+        let x = self.into_iter();
+
+        let mut dbs = Vec::new();
+        for v in x {
+            dbs.push(v);
+        }
+        dbs
+    }
+}
+
+trait LmdbScratchSpace {
+
+    fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)>;
+}
+
+impl<A:Attribute> LmdbScratchSpace for LmdbCursor<A> {
+
+    fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)> {
+        self.into()
+    }
 }
 
 /// Internal commit function which extracts `StoreError::MapFull` into the success value of
@@ -105,10 +143,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
     for LmdbCursor<A>
 {
     fn commit(self) -> PersistenceResult<()> {
-        let dbs = vec![
-            (self.staging_cas_db.lmdb, self.cas_db.lmdb),
-            (self.staging_eav_db.lmdb, self.eav_db.lmdb),
-        ];
+        let dbs : Vec<(LmdbInstance, LmdbInstance)> = self.into();
 
         loop {
             let committed = commit_internal(dbs.clone())?;
@@ -285,7 +320,22 @@ impl Environment for LmdbEnvironment {
 
 impl Writer for LmdbEnvCursor {
     fn commit(self) -> PersistenceResult<()> {
-        unimplemented!()
+
+        let dbs = Vec::new();
+
+        for (_k,_cursor) in self.cursors.iter() {
+
+            // FIXME figure out how to extract the databases
+            //let mut dbs_for_cursor = cursor.downcast::<LmdbCursor<_>>().unwrap();
+//            dbs.append(&mut dbs_for_cursor.dbs())
+        }
+
+        loop {
+            let committed = commit_internal(dbs.clone())?;
+            if committed {
+                return Ok(());
+            }
+        }
     }
 }
 
