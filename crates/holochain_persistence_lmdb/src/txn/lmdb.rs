@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use uuid::Uuid;
 /// A cursor over an lmdb environment
@@ -245,6 +245,7 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
+#[allow(dead_code)]
 pub struct LmdbEnvironment {
     /// Path prefix to generate staging databases
     staging_path_prefix: PathBuf,
@@ -288,16 +289,17 @@ impl Writer for LmdbEnvCursor {
     }
 }
 
+#[allow(dead_code)]
 pub struct LmdbEnvCursor {
     env: Arc<LmdbEnvironment>,
-    cursors: Arc<RwLock<UniversalMap<String>>>,
+    cursors: UniversalMap<String>,
 }
 
 impl LmdbEnvCursor {
     fn new(env: Arc<LmdbEnvironment>) -> Self {
         Self {
             env,
-            cursors: Arc::new(RwLock::new(UniversalMap::new())),
+            cursors: UniversalMap::new(),
         }
     }
 }
@@ -307,20 +309,20 @@ impl EnvCursor for LmdbEnvCursor {
         &self,
         key: &CursorRwKey<A>,
     ) -> PersistenceResult<&Box<dyn CursorRw<A>>> {
-        let read = self.cursors.read().unwrap();
-        read.get(key)
+        self.cursors.get(key)
             .map(|x| Ok(x.clone()))
             .unwrap_or_else(|| Err(format!("Database {:?} does not exist", key).into()))
     }
 }
 
+#[allow(dead_code)]
 impl LmdbEnvCursor {
     fn add_database<A: Attribute + Sync + Send + 'static>(
         &mut self,
         key: &CursorRwKey<A>,
         cursor: Box<dyn CursorRw<A>>,
     ) {
-        self.cursors.write().unwrap().insert(key.clone(), cursor);
+        self.cursors.insert(key.clone(), cursor);
     }
 }
 
