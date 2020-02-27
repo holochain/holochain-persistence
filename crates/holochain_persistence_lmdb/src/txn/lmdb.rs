@@ -17,9 +17,9 @@ use holochain_persistence_api::{
 use rkv::EnvironmentFlags;
 use serde::de::DeserializeOwned;
 use std::{
-    iter::IntoIterator,
     collections::BTreeSet,
     fs,
+    iter::IntoIterator,
     path::{Path, PathBuf},
 };
 
@@ -35,7 +35,7 @@ pub struct LmdbCursor<A: Attribute> {
     staging_eav_db: EavLmdbStorage<A>,
 }
 
-impl<A:Attribute> IntoIterator for LmdbCursor<A> {
+impl<A: Attribute> IntoIterator for LmdbCursor<A> {
     type Item = (LmdbInstance, LmdbInstance);
     type IntoIter = std::vec::IntoIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
@@ -47,8 +47,7 @@ impl<A:Attribute> IntoIterator for LmdbCursor<A> {
     }
 }
 
-impl<A:Attribute> Into<Vec<(LmdbInstance, LmdbInstance)>> for LmdbCursor<A> {
-
+impl<A: Attribute> Into<Vec<(LmdbInstance, LmdbInstance)>> for LmdbCursor<A> {
     fn into(self) -> Vec<(LmdbInstance, LmdbInstance)> {
         let x = self.into_iter();
 
@@ -61,12 +60,10 @@ impl<A:Attribute> Into<Vec<(LmdbInstance, LmdbInstance)>> for LmdbCursor<A> {
 }
 
 trait LmdbScratchSpace {
-
     fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)>;
 }
 
-impl<A:Attribute> LmdbScratchSpace for LmdbCursor<A> {
-
+impl<A: Attribute> LmdbScratchSpace for LmdbCursor<A> {
     fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)> {
         self.into()
     }
@@ -143,7 +140,7 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::t
     for LmdbCursor<A>
 {
     fn commit(self) -> PersistenceResult<()> {
-        let dbs : Vec<(LmdbInstance, LmdbInstance)> = self.into();
+        let dbs: Vec<(LmdbInstance, LmdbInstance)> = self.into();
 
         loop {
             let committed = commit_internal(dbs.clone())?;
@@ -320,18 +317,8 @@ impl Environment for LmdbEnvironment {
 
 impl Writer for LmdbEnvCursor {
     fn commit(self) -> PersistenceResult<()> {
-
-        let dbs = Vec::new();
-
-        for (_k,_cursor) in self.cursors.iter() {
-
-            // FIXME figure out how to extract the databases
-            //let mut dbs_for_cursor = cursor.downcast::<LmdbCursor<_>>().unwrap();
-//            dbs.append(&mut dbs_for_cursor.dbs())
-        }
-
         loop {
-            let committed = commit_internal(dbs.clone())?;
+            let committed = commit_internal(self.dbs.clone())?;
             if committed {
                 return Ok(());
             }
@@ -342,6 +329,7 @@ impl Writer for LmdbEnvCursor {
 #[allow(dead_code)]
 pub struct LmdbEnvCursor {
     env: Arc<LmdbEnvironment>,
+    dbs: Vec<(LmdbInstance, LmdbInstance)>,
     cursors: UniversalMap<String>,
 }
 
@@ -349,6 +337,7 @@ impl LmdbEnvCursor {
     fn new(env: Arc<LmdbEnvironment>) -> Self {
         Self {
             env,
+            dbs: Vec::new(),
             cursors: UniversalMap::new(),
         }
     }
@@ -372,6 +361,8 @@ impl EnvCursor for LmdbEnvCursor {
             let provider: Option<&LmdbCursorProvider<A>> = self.env.cursor_providers.get(&prov_key);
             if let Some(provider) = provider {
                 let cursor = Box::new(CursorProvider::create_cursor(provider)?);
+                let mut dbs = cursor.clone().dbs();
+                self.dbs.append(&mut dbs);
                 let _result = self.cursors.insert(key.clone(), cursor);
                 self.cursor_rw(key)
             } else {
