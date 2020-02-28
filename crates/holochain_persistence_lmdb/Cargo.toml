@@ -27,8 +27,11 @@ uuid = { version = "=0.7.1", features = ["v4"] }
 bencher = "=0.1.5"
 rand = "0.7.2"
 rkv = "0.10.2"
+# To get access to lmdb error types which aren't exported by rkv
 lmdb-rkv = "0.12.3"
+shrinkwraprs = "0.2.1"
 holochain_logging = "=0.0.7"
 
 [dev-dependencies]
 tempfile = "=3.0.7"
+env_logger = "0.6.1"

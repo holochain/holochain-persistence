@@ -11,7 +11,7 @@ use crate::{
 use chrono::offset::Utc;
 use eav::{
     query::{EaviQuery, IndexFilter},
-    storage::{EntityAttributeValueStorage, ExampleEntityAttributeValueStorage},
+    storage::{AddEavi, ExampleEntityAttributeValueStorage, FetchEavi},
 };
 use holochain_json_api::{
     error::{JsonError, JsonResult},
@@ -32,7 +32,13 @@ pub type Entity = Address;
 /// may require other traits.
 
 pub trait Attribute:
-    PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Ord
+    PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send + Ord
+{
+}
+
+impl<
+        A: PartialEq + Eq + PartialOrd + Hash + Clone + serde::Serialize + Debug + Sync + Send + Ord,
+    > Attribute for A
 {
 }
 
@@ -69,7 +75,6 @@ impl From<String> for ExampleAttribute {
         }
     }
 }
-impl Attribute for ExampleAttribute {}
 
 #[derive(PartialEq, Debug)]
 pub enum AttributeError {
@@ -274,7 +279,7 @@ pub fn eav_round_trip_test_runner<A: Attribute>(
         &value_content.address(),
     )
     .expect("Could not create EAV");
-    let mut eav_storage = ExampleEntityAttributeValueStorage::new();
+    let eav_storage = ExampleEntityAttributeValueStorage::new();
 
     assert_eq!(
         BTreeSet::new(),

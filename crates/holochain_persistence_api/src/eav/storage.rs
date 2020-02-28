@@ -14,19 +14,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-/// This provides a simple and flexible interface to define relationships between AddressableContent.
-/// It does NOT provide storage for AddressableContent.
-/// Use cas::storage::ContentAddressableStorage to store AddressableContent.
-pub trait EntityAttributeValueStorage<A: Attribute>:
-    objekt::Clone + Send + Sync + Debug + ReportStorage
-{
+pub trait AddEavi<A: Attribute>: objekt::Clone + Send + Sync + Debug + ReportStorage {
     /// Adds the given EntityAttributeValue to the EntityAttributeValueStorage
     /// append only storage.
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>>;
+}
 
+pub trait FetchEavi<A: Attribute>: objekt::Clone + Send + Sync + Debug + ReportStorage {
     /// Fetch the set of EntityAttributeValues that match constraints according to the latest hash version
     /// - None = no constraint
     /// - Some(Entity) = requires the given entity (e.g. all a/v pairs for the entity)
@@ -36,13 +33,17 @@ pub trait EntityAttributeValueStorage<A: Attribute>:
         &self,
         query: &EaviQuery<A>,
     ) -> PersistenceResult<BTreeSet<EntityAttributeValueIndex<A>>>;
-
-    // @TODO: would like to do this, but can't because of the generic type param
-    // fn iter<I>(&self) -> I
-    // where
-    //     I: Iterator<Item = EntityAttributeValueIndex>;
 }
 
+/// This provides a simple and flexible interface to define relationships between AddressableContent.
+/// It does NOT provide storage for AddressableContent.
+/// Use cas::storage::ContentAddressableStorage to store AddressableContent.
+pub trait EntityAttributeValueStorage<A: Attribute>: AddEavi<A> + FetchEavi<A> {}
+
+impl<A: Attribute, C: AddEavi<A> + FetchEavi<A>> EntityAttributeValueStorage<A> for C {}
+
+clone_trait_object!(<A:Attribute>AddEavi<A>);
+clone_trait_object!(<A:Attribute>FetchEavi<A>);
 clone_trait_object!(<A:Attribute>EntityAttributeValueStorage<A>);
 
 #[derive(Clone, Debug, Default)]
@@ -59,12 +60,12 @@ impl<A: Attribute> ExampleEntityAttributeValueStorage<A> {
     }
 }
 
-impl<A: Attribute> EntityAttributeValueStorage<A> for ExampleEntityAttributeValueStorage<A>
+impl<A: Attribute> AddEavi<A> for ExampleEntityAttributeValueStorage<A>
 where
     A: std::marker::Send + std::marker::Sync,
 {
     fn add_eavi(
-        &mut self,
+        &self,
         eav: &EntityAttributeValueIndex<A>,
     ) -> PersistenceResult<Option<EntityAttributeValueIndex<A>>> {
         let mut map = self.storage.write()?;
@@ -72,7 +73,12 @@ where
         map.insert(new_eav.clone());
         Ok(Some(new_eav))
     }
+}
 
+impl<A: Attribute> FetchEavi<A> for ExampleEntityAttributeValueStorage<A>
+where
+    A: std::marker::Send + std::marker::Sync,
+{
     fn fetch_eavi(
         &self,
         query: &EaviQuery<A>,
@@ -116,7 +122,7 @@ impl EavBencher {
 
     pub fn bench_add(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         b.iter(|| {
             let eav = EntityAttributeValueIndex::new(
@@ -131,7 +137,7 @@ impl EavBencher {
 
     pub fn bench_fetch_all(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {
@@ -149,7 +155,7 @@ impl EavBencher {
 
     pub fn bench_fetch_exact(
         b: &mut test::Bencher,
-        mut store: impl EntityAttributeValueStorage<ExampleAttribute>,
+        store: impl EntityAttributeValueStorage<ExampleAttribute>,
     ) {
         // add some values to make it realistic
         for _ in 0..100 {

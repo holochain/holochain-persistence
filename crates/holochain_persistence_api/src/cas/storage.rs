@@ -10,6 +10,7 @@ use crate::{
         IndexFilter,
     },
     error::{PersistenceError, PersistenceResult},
+    has_uuid::HasUuid,
     holochain_json_api::{
         error::JsonError,
         json::{JsonString, RawString},
@@ -24,15 +25,15 @@ use std::{
     fmt::{self, Debug},
     sync::{Arc, RwLock},
 };
+
 use uuid::Uuid;
 
-/// content addressable store (CAS)
-/// implements storage in memory or persistently
-/// anything implementing AddressableContent can be added and fetched by address
-/// CAS is append only
-pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug + ReportStorage {
+pub trait AddContent: objekt::Clone + Send + Sync + Debug {
     /// adds AddressableContent to the ContentAddressableStorage by its Address as Content
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()>;
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()>;
+}
+
+pub trait FetchContent: objekt::Clone + Send + Sync + Debug + ReportStorage + AddContent {
     /// true if the Address is in the Store, false otherwise.
     /// may be more efficient than retrieve depending on the implementation.
     fn contains(&self, address: &Address) -> PersistenceResult<bool>;
@@ -40,11 +41,19 @@ pub trait ContentAddressableStorage: objekt::Clone + Send + Sync + Debug + Repor
     /// AddressableContent::from_content() can be used to allow the compiler to infer the type
     /// @see the fetch implementation for ExampleCas in the cas module tests
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>>;
-    //needed to find a way to compare two different CAS for partialord derives.
-    //easiest solution was to just compare two ids which are based on uuids
-    fn get_id(&self) -> Uuid;
 }
 
+/// content addressable store (CAS)
+/// implements storage in memory or persistently
+/// anything implementing AddressableContent can be added and fetched by address
+/// CAS is append only
+pub trait ContentAddressableStorage:
+    objekt::Clone + Send + Sync + Debug + AddContent + FetchContent + HasUuid + ReportStorage
+{
+}
+
+clone_trait_object!(AddContent);
+clone_trait_object!(FetchContent);
 clone_trait_object!(ContentAddressableStorage);
 
 impl PartialEq for dyn ContentAddressableStorage {
@@ -52,6 +61,14 @@ impl PartialEq for dyn ContentAddressableStorage {
         self.get_id() == other.get_id()
     }
 }
+
+impl HasUuid for ExampleContentAddressableStorage {
+    fn get_id(&self) -> Uuid {
+        Uuid::new_v4()
+    }
+}
+
+impl<C: AddContent + FetchContent + ReportStorage + HasUuid> ContentAddressableStorage for C {}
 
 #[derive(Clone, Debug)]
 /// some struct to show an example ContentAddressableStorage implementation
@@ -73,8 +90,8 @@ pub fn test_content_addressable_storage() -> ExampleContentAddressableStorage {
     ExampleContentAddressableStorage::new().expect("could not build example cas")
 }
 
-impl ContentAddressableStorage for ExampleContentAddressableStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+impl AddContent for ExampleContentAddressableStorage {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         self.content
             .write()
             .unwrap()
@@ -84,7 +101,9 @@ impl ContentAddressableStorage for ExampleContentAddressableStorage {
                 e
             })
     }
+}
 
+impl FetchContent for ExampleContentAddressableStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         self.content
             .read()
@@ -95,10 +114,6 @@ impl ContentAddressableStorage for ExampleContentAddressableStorage {
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
         Ok(self.content.read()?.unthreadable_fetch(address)?)
-    }
-
-    fn get_id(&self) -> Uuid {
-        Uuid::new_v4()
     }
 }
 
@@ -152,7 +167,7 @@ where
 
     // does round trip test that can infer two Addressable Content Types
     pub fn round_trip_test<Addressable, OtherAddressable>(
-        mut self,
+        self,
         content: Content,
         other_content: Content,
     ) where
@@ -305,27 +320,9 @@ impl TryFrom<String> for ExampleLink {
     }
 }
 
-/*
-impl From<String> for ExampleLink {
-
-    fn from(s:String) -> Self {
-        JsonString::from(RawString::from(s)).try_into().expect("example link as json")
-    }
-}
-
-impl Into<String> for ExampleLink {
-
-    fn into(self) -> String {
-       let json = JsonString::try_from(self);
-       json.expect("json form of example link").to_string()
-    }
-}*/
-
-impl Attribute for ExampleLink {}
-
 impl EavTestSuite {
     pub fn test_round_trip<A: Attribute>(
-        mut eav_storage: impl EntityAttributeValueStorage<A> + Clone,
+        eav_storage: impl EntityAttributeValueStorage<A> + Clone,
         entity_content: impl AddressableContent,
         attribute: A,
         value_content: impl AddressableContent,
@@ -398,7 +395,7 @@ impl EavTestSuite {
             }
         }
     }
-    pub fn test_one_to_many<A, AT: Attribute, S>(mut eav_storage: S, attribute: &AT)
+    pub fn test_one_to_many<A, AT: Attribute, S>(eav_storage: S, attribute: &AT)
     where
         A: AddressableContent + Clone,
         S: EntityAttributeValueStorage<AT>,
@@ -480,7 +477,7 @@ impl EavTestSuite {
         }
     }
 
-    pub fn test_range<A, AT: Attribute, S>(mut eav_storage: S, attribute: &AT)
+    pub fn test_range<A, AT: Attribute, S>(eav_storage: S, attribute: &AT)
     where
         A: AddressableContent + Clone,
         S: EntityAttributeValueStorage<AT>,
@@ -578,7 +575,7 @@ impl EavTestSuite {
         );
     }
 
-    pub fn test_multiple_attributes<A, AT: Attribute, S>(mut eav_storage: S, attributes: Vec<AT>)
+    pub fn test_multiple_attributes<A, AT: Attribute, S>(eav_storage: S, attributes: Vec<AT>)
     where
         A: AddressableContent + Clone,
         S: EntityAttributeValueStorage<AT>,
@@ -635,7 +632,7 @@ impl EavTestSuite {
         assert_eq!(&new_eavi.unwrap().unwrap(), results.iter().last().unwrap())
     }
 
-    pub fn test_many_to_one<A, AT: Attribute, S>(mut eav_storage: S, attribute: &AT)
+    pub fn test_many_to_one<A, AT: Attribute, S>(eav_storage: S, attribute: &AT)
     where
         A: AddressableContent + Clone,
         S: EntityAttributeValueStorage<AT>,
@@ -720,7 +717,7 @@ impl EavTestSuite {
     //this tests tombstone functionality in the sense of , if there is a tombstone variable set that matches the predicate it should take precedent over everything else that is found
     //and if there isn't it should get the latest. This test will test both scenarios in which a tombstone is set and a match is found and a tombstone is set and a match is not found.
     //no need to test the case in which a tombstone is not set because it is has been applied in previous tests already
-    pub fn test_tombstone<A, S>(mut eav_storage: S)
+    pub fn test_tombstone<A, S>(eav_storage: S)
     where
         A: AddressableContent + Clone,
         S: EntityAttributeValueStorage<ExampleLink>,
@@ -883,11 +880,11 @@ impl CasBencher {
         ExampleAddressableContent::try_from_content(&RawString::from(s).into()).unwrap()
     }
 
-    pub fn bench_add(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
+    pub fn bench_add(b: &mut test::Bencher, store: impl ContentAddressableStorage) {
         b.iter(|| store.add(&CasBencher::random_addressable_content()))
     }
 
-    pub fn bench_fetch(b: &mut test::Bencher, mut store: impl ContentAddressableStorage) {
+    pub fn bench_fetch(b: &mut test::Bencher, store: impl ContentAddressableStorage) {
         // add some values to make it realistic
         for _ in 0..100 {
             store

@@ -147,7 +147,6 @@ impl<'a, A: Attribute> EaviQuery<'a, A> {
 }
 
 /// Represents a filter type which takes in a function to match on
-// pub struct EavFilter<'a, T: 'a + Eq>(Box<dyn Fn(T) -> bool + 'a>);
 pub enum EavFilter<'a, T: 'a + Eq> {
     Exact(T),
     Predicate(Box<dyn Fn(T) -> bool + 'a>),

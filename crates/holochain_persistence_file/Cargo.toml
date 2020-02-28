@@ -23,7 +23,7 @@ holochain_json_api = "=0.0.23"
 lazy_static = "=1.4.0"
 glob = "=0.3.0"
 uuid = { version = "=0.7.1", features = ["v4"] }
-
+tempfile = "=3.0.7"
 
 [dev-dependencies]
-tempfile = "=3.0.7"
+

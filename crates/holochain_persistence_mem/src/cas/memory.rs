@@ -1,7 +1,7 @@
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{AddContent, FetchContent},
     },
     error::PersistenceResult,
     reporting::ReportStorage,
@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 use uuid::Uuid;
+
+use holochain_persistence_api::has_uuid::HasUuid;
 
 #[derive(Clone, Debug)]
 pub struct MemoryStorage {
@@ -39,13 +41,15 @@ impl MemoryStorage {
     }
 }
 
-impl ContentAddressableStorage for MemoryStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+impl AddContent for MemoryStorage {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
         let mut map = self.storage.write()?;
         map.insert(content.address(), content.content());
         Ok(())
     }
+}
 
+impl FetchContent for MemoryStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
         let map = self.storage.read()?;
         Ok(map.contains_key(address))
@@ -55,7 +59,9 @@ impl ContentAddressableStorage for MemoryStorage {
         let map = self.storage.read()?;
         Ok(map.get(address).cloned())
     }
+}
 
+impl HasUuid for MemoryStorage {
     fn get_id(&self) -> Uuid {
         self.id
     }

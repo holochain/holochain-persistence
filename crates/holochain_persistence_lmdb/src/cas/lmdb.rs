@@ -1,29 +1,31 @@
-use crate::common::LmdbInstance;
+use crate::{
+    common::{handle_cursor_tuple_result, LmdbInstance},
+    error::to_api_error,
+};
 use holochain_json_api::json::JsonString;
 use holochain_persistence_api::{
     cas::{
         content::{Address, AddressableContent, Content},
-        storage::ContentAddressableStorage,
+        storage::{AddContent, FetchContent},
     },
     error::{PersistenceError, PersistenceResult},
     reporting::{ReportStorage, StorageReport},
 };
-use rkv::{
-    error::{DataError, StoreError},
-    Value,
-};
+use rkv::{error::StoreError, EnvironmentFlags, Reader, Value, Writer};
 use std::{
     fmt::{Debug, Error, Formatter},
     path::Path,
 };
 use uuid::Uuid;
 
-const CAS_BUCKET: &str = "cas";
+use holochain_persistence_api::has_uuid::HasUuid;
+
+pub const CAS_BUCKET: &str = "cas";
 
 #[derive(Clone)]
 pub struct LmdbStorage {
-    id: Uuid,
-    lmdb: LmdbInstance,
+    pub id: Uuid,
+    pub lmdb: LmdbInstance,
 }
 
 impl Debug for LmdbStorage {
@@ -35,56 +37,123 @@ impl Debug for LmdbStorage {
 impl LmdbStorage {
     pub fn new<P: AsRef<Path> + Clone>(
         db_path: P,
-        initial_map_bytes: Option<usize>,
-    ) -> LmdbStorage {
-        LmdbStorage {
+        initial_map_size: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+    ) -> Self {
+        Self::wrap(LmdbInstance::new(
+            CAS_BUCKET,
+            db_path,
+            initial_map_size,
+            env_flags,
+        ))
+    }
+
+    pub fn wrap(lmdb: LmdbInstance) -> Self {
+        Self {
             id: Uuid::new_v4(),
-            lmdb: LmdbInstance::new(CAS_BUCKET, db_path, initial_map_bytes),
+            lmdb,
         }
     }
 }
 
+/// Interface for a single lmdb database. Meant for use by
+/// a CAS, EAV, and/or cursor implementation.
 impl LmdbStorage {
-    fn lmdb_add(&mut self, content: &dyn AddressableContent) -> Result<(), StoreError> {
+    pub fn lmdb_add<'env>(
+        &self,
+        mut writer: &mut rkv::Writer<'env>,
+        content: &dyn AddressableContent,
+    ) -> Result<(), StoreError> {
         self.lmdb.add(
+            &mut writer,
             content.address(),
             &Value::Json(&content.content().to_string()),
         )
     }
 
-    fn lmdb_fetch(&self, address: &Address) -> Result<Option<Content>, StoreError> {
-        let env = self.lmdb.manager.read().unwrap();
-        let reader = env.read()?;
+    pub fn lmdb_resizable_add(&self, content: &dyn AddressableContent) -> Result<(), StoreError> {
+        self.lmdb.resizable_add(
+            &content.address(),
+            &Value::Json(&content.content().to_string()),
+        )
+    }
 
-        match self.lmdb.store.get(&reader, address.clone()) {
-            Ok(Some(value)) => match value {
-                Value::Json(s) => Ok(Some(JsonString::from_json(s))),
-                _ => Err(StoreError::DataError(DataError::Empty)),
-            },
+    fn handle_cursor_result_json_string(
+        result: Result<Option<rkv::Value>, StoreError>,
+    ) -> Result<Option<Content>, StoreError> {
+        match result {
+            Ok(Some(Value::Json(s))) => Ok(Some(JsonString::from_json(s))),
             Ok(None) => Ok(None),
+            Ok(Some(_v)) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+                actual: rkv::value::Type::Json,
+                expected: rkv::value::Type::Json,
+            })),
             Err(e) => Err(e),
         }
     }
-}
 
-impl ContentAddressableStorage for LmdbStorage {
-    fn add(&mut self, content: &dyn AddressableContent) -> PersistenceResult<()> {
-        self.lmdb_add(content)
-            .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
+    pub fn lmdb_fetch(
+        &self,
+        reader: &Reader,
+        address: &Address,
+    ) -> Result<Option<Content>, StoreError> {
+        let result = self.lmdb.store().get(reader, address.clone());
+        Self::handle_cursor_result_json_string(result)
     }
 
+    pub fn lmdb_iter(
+        &self,
+        reader: &Reader,
+    ) -> Result<Vec<(Address, Option<Content>)>, StoreError> {
+        self.lmdb
+            .store()
+            .iter_start(reader)?
+            .map(handle_cursor_tuple_result)
+            .collect::<Result<Vec<(Address, Option<Content>)>, StoreError>>()
+    }
+
+    /// Copies all data from reader `source` to `target`
+    /// using `writer`.
+    pub fn copy_all<'env, 'env2>(
+        &self,
+        source: &Reader<'env>,
+        target: &Self,
+        mut writer: &mut Writer<'env2>,
+    ) -> Result<(), StoreError> {
+        self.lmdb.copy_all(source, &target.lmdb, &mut writer)
+    }
+}
+
+impl AddContent for LmdbStorage {
+    fn add(&self, content: &dyn AddressableContent) -> PersistenceResult<()> {
+        self.lmdb_resizable_add(content)
+            .map_err(|e| PersistenceError::from(format!("CAS add error: {}", e)))
+    }
+}
+
+impl FetchContent for LmdbStorage {
     fn contains(&self, address: &Address) -> PersistenceResult<bool> {
-        self.fetch(address).map(|result| match result {
-            Some(_) => true,
-            None => false,
-        })
+        let rkv = self.lmdb.rkv().read().unwrap();
+        let reader: rkv::Reader = rkv.read().map_err(to_api_error)?;
+
+        self.lmdb_fetch(&reader, address)
+            .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
+            .map(|result| match result {
+                Some(_) => true,
+                None => false,
+            })
     }
 
     fn fetch(&self, address: &Address) -> PersistenceResult<Option<Content>> {
-        self.lmdb_fetch(address)
+        let rkv = self.lmdb.rkv().read().unwrap();
+        let reader = rkv.read().map_err(to_api_error)?;
+
+        self.lmdb_fetch(&reader, address)
             .map_err(|e| PersistenceError::from(format!("CAS fetch error: {}", e)))
     }
+}
 
+impl HasUuid for LmdbStorage {
     fn get_id(&self) -> Uuid {
         self.id
     }
@@ -103,7 +172,7 @@ mod tests {
     use holochain_persistence_api::{
         cas::{
             content::{Content, ExampleAddressableContent, OtherExampleAddressableContent},
-            storage::{CasBencher, ContentAddressableStorage, StorageTestSuite},
+            storage::{AddContent, CasBencher, StorageTestSuite},
         },
         reporting::{ReportStorage, StorageReport},
     };
@@ -111,7 +180,7 @@ mod tests {
 
     pub fn test_lmdb_cas() -> (LmdbStorage, TempDir) {
         let dir = tempdir().expect("Could not create a tempdir for CAS testing");
-        (LmdbStorage::new(dir.path(), None), dir)
+        (LmdbStorage::new(dir.path(), None, None), dir)
     }
 
     #[bench]
@@ -140,7 +209,7 @@ mod tests {
 
     #[test]
     fn lmdb_report_storage_test() {
-        let (mut cas, _) = test_lmdb_cas();
+        let (cas, _) = test_lmdb_cas();
         // add some content
         cas.add(&Content::from_json("some bytes"))
             .expect("could not add to CAS");

@@ -53,7 +53,7 @@ impl AddressableContent for Content {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, Deserialize)]
 /// some struct that can be content addressed
 /// imagine an Entry, ChainHeader, Meta Value, etc.
 pub struct ExampleAddressableContent {
@@ -138,7 +138,7 @@ impl AddressableContentTestSuite {
         );
     }
 
-    pub fn addressable_content_round_trip<T, K>(contents: Vec<T>, mut cas: K)
+    pub fn addressable_content_round_trip<T, K>(contents: Vec<T>, cas: K)
     where
         T: AddressableContent + PartialEq + Clone + Debug,
         K: ContentAddressableStorage,

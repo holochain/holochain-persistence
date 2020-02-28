@@ -1,48 +1,90 @@
-use holochain_logging::prelude::*;
-use lmdb::Error as LmdbError;
+//use holochain_logging::prelude::*;
+//use lmdb::Error as LmdbError;
+use crate::error::{is_store_full_error, is_store_full_result};
+use holochain_persistence_api::{
+    cas::content::{Address, Content},
+    hash::HashString,
+};
 use rkv::{
-    DatabaseFlags, EnvironmentFlags, Manager, Rkv, SingleStore, StoreError, StoreOptions, Value,
+    DatabaseFlags, EnvironmentFlags, Manager, Reader, Rkv, SingleStore, StoreError, StoreOptions,
+    Value, Writer,
 };
 use std::{
+    collections::HashMap,
     path::Path,
     sync::{Arc, RwLock},
 };
 
-const DEFAULT_INITIAL_MAP_BYTES: usize = 100 * 1024 * 1024;
+const DEFAULT_INITIAL_MAP_SIZE: usize = 100 * 1024 * 1024;
 
 #[derive(Clone)]
-pub(crate) struct LmdbInstance {
-    pub store: SingleStore,
-    pub manager: Arc<RwLock<Rkv>>,
+pub struct LmdbInstance {
+    store: SingleStore,
+    /// A lock protected reference to the environment. This lock
+    /// is a consequence of using the `rkv::Manager` api which returns
+    /// guarded environments to protect users from creating multiple environments
+    /// in the same process and path.
+    rkv: LmdbEnv,
 }
 
-impl LmdbInstance {
-    pub fn new<P: AsRef<Path> + Clone>(
-        db_name: &str,
-        path: P,
-        initial_map_bytes: Option<usize>,
-    ) -> LmdbInstance {
-        let db_path = path.as_ref().join(db_name).with_extension("db");
-        std::fs::create_dir_all(db_path.clone()).expect("Could not create file path for store");
+/// Wraps the rkv environment for extending functionality
+#[derive(Clone, Shrinkwrap)]
+pub struct LmdbEnv(Arc<RwLock<Rkv>>);
 
-        let manager = Manager::singleton()
-            .write()
-            .unwrap()
-            .get_or_create(db_path.as_path(), |path: &Path| {
+impl LmdbEnv {
+    /// Creates an Rkv environment given some the file system `path`. If `use_rkv_manager` is
+    /// `Some(true)` then a singleton manager is used to create the environment.
+    pub fn new<P: AsRef<Path> + Clone>(
+        path: P,
+        max_dbs: usize,
+        initial_map_size: Option<usize>,
+        flags: Option<EnvironmentFlags>,
+        use_rkv_manager: Option<bool>,
+    ) -> LmdbEnv {
+        std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
+
+        let rkv =
+            if use_rkv_manager.unwrap_or_else(|| true) {
+                Manager::singleton()
+                    .write()
+                    .unwrap()
+                    .get_or_create(path.as_ref(), |path: &Path| {
+                        let mut env_builder = Rkv::environment_builder();
+                        env_builder
+                            // max size of memory map, can be changed later
+                            .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
+                            // max number of DBs in this environment
+                            .set_max_dbs(max_dbs as u32)
+                            // These flags make writes waaaaay faster by async writing to disk rather than blocking
+                            // There is some loss of data integrity guarantees that comes with this
+                            .set_flags(flags.unwrap_or_else(|| {
+                                EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
+                            }));
+                        Rkv::from_env(path, env_builder)
+                    })
+                    .expect("Could not create the environment")
+            } else {
                 let mut env_builder = Rkv::environment_builder();
                 env_builder
                     // max size of memory map, can be changed later
-                    .set_map_size(initial_map_bytes.unwrap_or(DEFAULT_INITIAL_MAP_BYTES))
+                    .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
                     // max number of DBs in this environment
-                    .set_max_dbs(1)
-                    // Thes flags make writes waaaaay faster by async writing to disk rather than blocking
+                    .set_max_dbs(max_dbs as u32)
+                    // These flags make writes waaaaay faster by async writing to disk rather than blocking
                     // There is some loss of data integrity guarantees that comes with this
-                    .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC);
-                Rkv::from_env(path, env_builder)
-            })
-            .expect("Could not create the environment");
+                    .set_flags(flags.unwrap_or_else(|| {
+                        EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
+                    }));
+                Arc::new(RwLock::new(
+                    Rkv::from_env(path.as_ref(), env_builder).unwrap(),
+                ))
+            };
+        Self(rkv)
+    }
 
-        let env = manager
+    /// Opens a new database within the environment, possibly creating it if necessary.
+    pub fn open_database(&self, db_name: &str) -> LmdbInstance {
+        let env = self
             .read()
             .expect("Could not get a read lock on the manager");
 
@@ -56,36 +98,145 @@ impl LmdbInstance {
             .expect("Could not create store");
 
         LmdbInstance {
-            store: store,
-            manager: manager.clone(),
+            store,
+            rkv: self.clone(),
         }
     }
+}
 
-    pub fn add<K: AsRef<[u8]> + Clone>(&self, key: K, value: &Value) -> Result<(), StoreError> {
-        let env = self.manager.read().unwrap();
-        let mut writer = env.write()?;
+impl LmdbInstance {
+    pub fn new<P: AsRef<Path> + Clone>(
+        db_name: &str,
+        path: P,
+        initial_map_size: Option<usize>,
+        flags: Option<EnvironmentFlags>,
+    ) -> LmdbInstance {
+        Self::new_all(&[db_name], path, initial_map_size, flags, None)
+            .into_iter()
+            .next()
+            .map(|(_db_name, instance)| instance)
+            .expect("Expected exactly one database instance")
+    }
 
-        match self
-            .store
-            .put(&mut writer, key.clone(), value)
-            .and_then(|_| writer.commit())
-        {
-            Err(StoreError::LmdbError(LmdbError::MapFull)) => {
-                trace!("Insufficient space in MMAP, doubling and trying again");
-                let map_size = env.info()?.map_size();
-                env.set_map_size(map_size * 2)?;
-                self.add(key, value)
+    /// Instantiates multiple lmdb database instances for a set of `db_names` at `path` and
+    /// initial map size `initial_map_size`. Transactions will be synchronized over all of them.
+    ///
+    /// If `use_rkv_manager` is set to the default of `true`, the provided `rkv::Manager` singleton
+    /// will ensure only one environment is created for the process per given `path`. If this is
+    /// already enforced outside this api then set it to `false`.
+    pub fn new_all<P: AsRef<Path> + Clone>(
+        db_names: &[&str],
+        path: P,
+        initial_map_size: Option<usize>,
+        flags: Option<EnvironmentFlags>,
+        use_rkv_manager: Option<bool>,
+    ) -> HashMap<String, LmdbInstance> {
+        let rkv: LmdbEnv = LmdbEnv::new(
+            path,
+            db_names.len(),
+            initial_map_size,
+            flags,
+            use_rkv_manager,
+        );
+        db_names
+            .iter()
+            .map(|db_name| ((*db_name).to_string(), rkv.open_database(db_name)))
+            .collect::<HashMap<_, _>>()
+    }
+
+    /// Puts `value` into the store mapped by `key`.
+    /// Fails with a `StoreError` if the memory map is already full.
+    pub fn add<'env, K: AsRef<[u8]> + Clone>(
+        &self,
+        mut writer: &mut Writer<'env>,
+        key: K,
+        value: &Value,
+    ) -> Result<(), StoreError> {
+        self.store.put(&mut writer, key, value)
+    }
+
+    /// Puts `value` into the store mapped by `key`.
+    /// Will automatically resize the memmory map if the map ends up full.
+    pub fn resizable_add<K: AsRef<[u8]> + Clone>(
+        &self,
+        key: &K,
+        value: &Value,
+    ) -> Result<(), StoreError> {
+        loop {
+            let env_lock = self.rkv.write().unwrap();
+            let mut writer = env_lock.write()?;
+            let result = self.add(&mut writer, key, value);
+
+            if is_store_full_result(&result) {
+                drop(writer);
+                let map_size = env_lock.info()?.map_size();
+                env_lock.set_map_size(map_size * map_growth_factor())?;
+                continue;
             }
-            r => r, // preserve any other errors
-        }?;
 
-        Ok(())
+            let result = writer.commit();
+
+            if let Err(e) = &result {
+                if is_store_full_error(e) {
+                    let map_size = env_lock.info()?.map_size();
+                    env_lock.set_map_size(map_size * map_growth_factor())?;
+                    continue;
+                }
+            }
+            return result;
+        }
     }
 
     #[allow(dead_code)]
     pub fn info(&self) -> Result<rkv::Info, StoreError> {
-        self.manager.read().unwrap().info()
+        self.rkv.read().unwrap().info()
     }
+
+    pub fn rkv(&self) -> &Arc<RwLock<rkv::Rkv>> {
+        &self.rkv
+    }
+
+    pub fn store(&self) -> &SingleStore {
+        &self.store
+    }
+
+    pub fn copy_all<'env, 'env2>(
+        &self,
+        source: &Reader<'env>,
+        target: &Self,
+        mut writer: &mut Writer<'env2>,
+    ) -> Result<(), StoreError> {
+        self.store().iter_start(source)?.try_fold((), |(), result| {
+            if let Ok((address, Some(data))) = result {
+                target.store().put(&mut writer, address, &data).map(|_| ())
+            } else {
+                result.map(|_| ())
+            }
+        })
+    }
+}
+
+pub fn handle_cursor_tuple_result(
+    result: Result<(&[u8], Option<rkv::Value>), StoreError>,
+) -> Result<(Address, Option<Content>), StoreError> {
+    match result {
+        Ok((address, Some(Value::Json(s)))) => Ok((
+            HashString::from(address.to_vec()),
+            Some(serde_json::from_str(&s).unwrap()),
+        )),
+        Ok((address, None)) => Ok((HashString::from(address.to_vec()), None)),
+        Ok((_address, Some(_v))) => Err(StoreError::DataError(rkv::DataError::UnexpectedType {
+            actual: rkv::value::Type::Json,
+            expected: rkv::value::Type::Json,
+        })),
+        Err(e) => Err(e),
+    }
+}
+
+const MAP_GROWTH_FACTOR: usize = 8;
+
+pub fn map_growth_factor() -> usize {
+    MAP_GROWTH_FACTOR
 }
 
 #[cfg(test)]
@@ -103,31 +254,38 @@ pub mod tests {
             "can_grow_map_on_write",
             dir.path(),
             Some(inititial_mmap_size),
+            Default::default(),
         );
 
         // put data in there until the mmap size changes
         while lmdb.info().unwrap().map_size() == inititial_mmap_size {
             let content = CasBencher::random_addressable_content();
-            lmdb.add(
-                content.address(),
+            lmdb.resizable_add(
+                &content.address(),
                 &Value::Json(&content.content().to_string()),
             )
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * 2,);
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size * map_growth_factor()
+        );
 
         // Do it again for good measure
-        while lmdb.info().unwrap().map_size() == 2 * inititial_mmap_size {
+        while lmdb.info().unwrap().map_size() == map_growth_factor() * inititial_mmap_size {
             let content = CasBencher::random_addressable_content();
-            lmdb.add(
-                content.address(),
+            lmdb.resizable_add(
+                &content.address(),
                 &Value::Json(&content.content().to_string()),
             )
             .unwrap();
         }
 
-        assert_eq!(lmdb.info().unwrap().map_size(), inititial_mmap_size * 4,);
+        assert_eq!(
+            lmdb.info().unwrap().map_size(),
+            inititial_mmap_size * map_growth_factor() * map_growth_factor(),
+        );
     }
 
     #[test]
@@ -139,13 +297,14 @@ pub mod tests {
             "can_grow_map_on_write",
             dir.path(),
             Some(inititial_mmap_size),
+            Default::default(),
         );
 
         let data: Vec<u8> = std::iter::repeat(0)
             .take(10 * inititial_mmap_size)
             .collect();
 
-        lmdb.add("a", &Value::Json(&String::from_utf8(data).unwrap()))
+        lmdb.resizable_add(&"a", &Value::Json(&String::from_utf8(data).unwrap()))
             .expect("could not write to lmdb");
     }
 }
