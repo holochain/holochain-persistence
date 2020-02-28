@@ -328,11 +328,11 @@ impl LmdbEnvironment {
         let eav_db = env.open_database(eav_db_name.as_str());
 
         let cursor_provider: LmdbCursorProvider<A> = LmdbCursorProvider {
-            cas_db: LmdbStorage::wrap(cas_db.clone()),
-            eav_db: EavLmdbStorage::wrap(eav_db.clone()),
+            cas_db: LmdbStorage::wrap(cas_db),
+            eav_db: EavLmdbStorage::wrap(eav_db),
             staging_path_prefix: staging_path_prefix.clone(),
-            staging_env_flags: staging_env_flags.clone(),
-            staging_initial_map_size: staging_initial_map_size.clone(),
+            staging_env_flags: *staging_env_flags,
+            staging_initial_map_size: *staging_initial_map_size,
         };
 
         let key = Key::new(database_prefix.to_string());
@@ -345,7 +345,7 @@ impl LmdbEnvironment {
 impl Environment for LmdbEnvironment {
     type EnvCursor = LmdbEnvCursor;
     fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor> {
-        Ok(LmdbEnvCursor::new(self.clone()))
+        Ok(LmdbEnvCursor::new(self))
     }
 }
 
