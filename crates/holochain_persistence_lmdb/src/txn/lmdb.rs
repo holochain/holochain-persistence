@@ -287,6 +287,10 @@ pub struct LmdbEnvironment {
 }
 
 impl LmdbEnvironment {
+    /// Creates a new environment given the environment path.
+    /// No databases are initially opened for the environment.
+    /// The staging parameters determine the configuration of
+    /// temporary scratch databases.
     pub fn new<EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
         env_path: EP,
         max_dbs: usize,
@@ -310,6 +314,9 @@ impl LmdbEnvironment {
         }
     }
 
+    /// Adds an EAV and CAS database pair to the environment given
+    /// the database prefix. Returns a key which can be used to access
+    /// a cursor from an `LmdbEnvCursor` instance.
     pub fn add_database<A: Attribute + 'static>(
         &mut self,
         database_prefix: &str,
