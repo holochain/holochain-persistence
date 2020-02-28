@@ -273,6 +273,8 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
+/// Wraps the raw lmdb environment with staging database
+/// information and a cursor provider per EAV/CAS database pair.
 pub struct LmdbEnvironment {
     /// Path prefix to generate staging databases
     staging_path_prefix: PathBuf,
@@ -282,7 +284,11 @@ pub struct LmdbEnvironment {
 
     /// Environment flags for staging databases.
     staging_env_flags: Option<EnvironmentFlags>,
+
+    /// The underlying lmdb environment
     env: LmdbEnv,
+
+    /// Cursor providers mapped by database key.
     cursor_providers: UniversalMap<String>,
 }
 

@@ -294,20 +294,39 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn get_id(&self) -> Uuid;
 }
 
+/// Maps the type of a schema and a database reference to a particular
+/// cursor (backed by both a CAS and EAV).
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
+
+/// A cursor that permits transactional semantics over multiple database
+/// sources.
 pub trait EnvCursor: Writer {
-    // TODO Alternatively: type CursorRw : CursorRw<A>;
+    /// Gets or creates a read/write cursor for a particular CAS/EAV pair
+    /// as mapped by the given `key`. Produces a `PersistenceError` if
+    /// the key is not associated with this environment.
     fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
         &mut self,
         key: &CursorRwKey<A>,
     ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
 }
 
+/// Represents a single source of databases. Transactions can be scoped
+/// over all of them. To initiate a transaction invoke the `create_cursor`
+/// trait method.
 pub trait Environment {
+    /// The type of a cursor for an entire environment.
     type EnvCursor: EnvCursor;
+
+    /// Creates a new cursor that provides transactional support
+    /// across mutiple databases within the environment.
+    ///
+    /// Scratch databases and other temporary resources may be created
+    /// for some environment implementations.
     fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor>;
 }
 
+/// A degenerate environment that only returns erroneous `PersistenceResult`
+/// instances.
 pub struct DefaultEnvironment;
 
 impl DefaultEnvironment {
@@ -487,6 +506,7 @@ pub fn new_example_persistence_manager<A: Attribute + Default>(
     Ok(DefaultPersistenceManager::new(cas, eav, cursor_provider))
 }
 
+/// Harness to test the transactional features of a persistence manager.
 pub struct PersistenceManagerTestSuite<
     A: Attribute + Clone,
     CP: CursorProvider<A> + Clone + 'static,
