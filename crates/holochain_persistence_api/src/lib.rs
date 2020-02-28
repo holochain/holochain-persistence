@@ -9,6 +9,9 @@ extern crate test;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate shrinkwraprs;
+
 extern crate chrono;
 extern crate futures;
 extern crate multihash;
@@ -29,7 +32,7 @@ pub mod has_uuid;
 pub mod hash;
 pub mod reporting;
 pub mod txn;
-
+pub mod univ_map;
 #[macro_use]
 extern crate objekt;
 

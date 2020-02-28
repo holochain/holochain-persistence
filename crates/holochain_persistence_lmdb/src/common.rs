@@ -24,7 +24,84 @@ pub struct LmdbInstance {
     /// is a consequence of using the `rkv::Manager` api which returns
     /// guarded environments to protect users from creating multiple environments
     /// in the same process and path.
-    rkv: Arc<RwLock<Rkv>>,
+    rkv: LmdbEnv,
+}
+
+/// Wraps the rkv environment for extending functionality
+#[derive(Clone, Shrinkwrap)]
+pub struct LmdbEnv(Arc<RwLock<Rkv>>);
+
+impl LmdbEnv {
+    /// Creates an Rkv environment given some the file system `path`. If `use_rkv_manager` is
+    /// `Some(true)` then a singleton manager is used to create the environment.
+    pub fn new<P: AsRef<Path> + Clone>(
+        path: P,
+        max_dbs: usize,
+        initial_map_size: Option<usize>,
+        flags: Option<EnvironmentFlags>,
+        use_rkv_manager: Option<bool>,
+    ) -> LmdbEnv {
+        std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
+
+        let rkv =
+            if use_rkv_manager.unwrap_or_else(|| true) {
+                Manager::singleton()
+                    .write()
+                    .unwrap()
+                    .get_or_create(path.as_ref(), |path: &Path| {
+                        let mut env_builder = Rkv::environment_builder();
+                        env_builder
+                            // max size of memory map, can be changed later
+                            .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
+                            // max number of DBs in this environment
+                            .set_max_dbs(max_dbs as u32)
+                            // These flags make writes waaaaay faster by async writing to disk rather than blocking
+                            // There is some loss of data integrity guarantees that comes with this
+                            .set_flags(flags.unwrap_or_else(|| {
+                                EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
+                            }));
+                        Rkv::from_env(path, env_builder)
+                    })
+                    .expect("Could not create the environment")
+            } else {
+                let mut env_builder = Rkv::environment_builder();
+                env_builder
+                    // max size of memory map, can be changed later
+                    .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
+                    // max number of DBs in this environment
+                    .set_max_dbs(max_dbs as u32)
+                    // These flags make writes waaaaay faster by async writing to disk rather than blocking
+                    // There is some loss of data integrity guarantees that comes with this
+                    .set_flags(flags.unwrap_or_else(|| {
+                        EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
+                    }));
+                Arc::new(RwLock::new(
+                    Rkv::from_env(path.as_ref(), env_builder).unwrap(),
+                ))
+            };
+        Self(rkv)
+    }
+
+    /// Opens a new database within the environment, possibly creating it if necessary.
+    pub fn open_database(&self, db_name: &str) -> LmdbInstance {
+        let env = self
+            .read()
+            .expect("Could not get a read lock on the manager");
+
+        // Then you can use the environment handle to get a handle to a datastore:
+        let options = StoreOptions {
+            create: true,
+            flags: DatabaseFlags::empty(),
+        };
+        let store: SingleStore = env
+            .open_single(db_name, options)
+            .expect("Could not create store");
+
+        LmdbInstance {
+            store,
+            rkv: self.clone(),
+        }
+    }
 }
 
 impl LmdbInstance {
@@ -54,74 +131,17 @@ impl LmdbInstance {
         flags: Option<EnvironmentFlags>,
         use_rkv_manager: Option<bool>,
     ) -> HashMap<String, LmdbInstance> {
-        std::fs::create_dir_all(path.clone()).expect("Could not create file path for store");
-
-        let rkv =
-            if use_rkv_manager.unwrap_or_else(|| true) {
-                Manager::singleton()
-                    .write()
-                    .unwrap()
-                    .get_or_create(path.as_ref(), |path: &Path| {
-                        let mut env_builder = Rkv::environment_builder();
-                        env_builder
-                            // max size of memory map, can be changed later
-                            .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
-                            // max number of DBs in this environment
-                            .set_max_dbs(db_names.len() as u32)
-                            // These flags make writes waaaaay faster by async writing to disk rather than blocking
-                            // There is some loss of data integrity guarantees that comes with this
-                            .set_flags(flags.unwrap_or_else(|| {
-                                EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
-                            }));
-                        Rkv::from_env(path, env_builder)
-                    })
-                    .expect("Could not create the environment")
-            } else {
-                let mut env_builder = Rkv::environment_builder();
-                env_builder
-                    // max size of memory map, can be changed later
-                    .set_map_size(initial_map_size.unwrap_or(DEFAULT_INITIAL_MAP_SIZE))
-                    // max number of DBs in this environment
-                    .set_max_dbs(db_names.len() as u32)
-                    // These flags make writes waaaaay faster by async writing to disk rather than blocking
-                    // There is some loss of data integrity guarantees that comes with this
-                    .set_flags(flags.unwrap_or_else(|| {
-                        EnvironmentFlags::WRITE_MAP | EnvironmentFlags::MAP_ASYNC
-                    }));
-                Arc::new(RwLock::new(
-                    Rkv::from_env(path.as_ref(), env_builder).unwrap(),
-                ))
-            };
-
+        let rkv: LmdbEnv = LmdbEnv::new(
+            path,
+            db_names.len(),
+            initial_map_size,
+            flags,
+            use_rkv_manager,
+        );
         db_names
             .iter()
-            .map(|db_name| {
-                (
-                    (*db_name).to_string(),
-                    Self::create_database(db_name, rkv.clone()),
-                )
-            })
+            .map(|db_name| ((*db_name).to_string(), rkv.open_database(db_name)))
             .collect::<HashMap<_, _>>()
-    }
-
-    fn create_database(db_name: &str, rkv: Arc<RwLock<Rkv>>) -> LmdbInstance {
-        let env = rkv
-            .read()
-            .expect("Could not get a read lock on the manager");
-
-        // Then you can use the environment handle to get a handle to a datastore:
-        let options = StoreOptions {
-            create: true,
-            flags: DatabaseFlags::empty(),
-        };
-        let store: SingleStore = env
-            .open_single(db_name, options)
-            .expect("Could not create store");
-
-        LmdbInstance {
-            store,
-            rkv: rkv.clone(),
-        }
     }
 
     /// Puts `value` into the store mapped by `key`.

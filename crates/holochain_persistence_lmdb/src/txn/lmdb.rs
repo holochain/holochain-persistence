@@ -1,6 +1,6 @@
 use crate::{
     cas::lmdb::LmdbStorage,
-    common::{map_growth_factor, LmdbInstance},
+    common::{map_growth_factor, LmdbEnv, LmdbInstance},
     eav::lmdb::EavLmdbStorage,
     error::{is_store_full_error, is_store_full_result, to_api_error},
 };
@@ -11,17 +11,21 @@ use holochain_persistence_api::{
     error::*,
     has_uuid::HasUuid,
     reporting::{ReportStorage, StorageReport},
-    txn::{Cursor, CursorProvider, DefaultPersistenceManager},
+    txn::*,
+    univ_map::*,
 };
 use rkv::EnvironmentFlags;
 use serde::de::DeserializeOwned;
 use std::{
     collections::BTreeSet,
     fs,
+    iter::IntoIterator,
     path::{Path, PathBuf},
 };
-use uuid::Uuid;
 
+use std::sync::Arc;
+
+use uuid::Uuid;
 /// A cursor over an lmdb environment
 #[derive(Clone, Debug)]
 pub struct LmdbCursor<A: Attribute> {
@@ -31,25 +35,70 @@ pub struct LmdbCursor<A: Attribute> {
     staging_eav_db: EavLmdbStorage<A>,
 }
 
-impl<A: Attribute + Sync + Send + DeserializeOwned> LmdbCursor<A> {
-    /// Internal commit function which extracts `StoreError::MapFull` into the success value of
-    /// a result where `true` indicates the commit is successful, and `false` means the map was
-    /// full and retry is required with the newly allocated map size.
-    fn commit_internal(&self) -> PersistenceResult<bool> {
-        trace!("writer: commit_internal start");
-        let staging_env_lock = self.staging_cas_db.lmdb.rkv().read().unwrap();
-        trace!("writer: commit_internal got staging env lock");
-        let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
-        trace!("writer: commit_internal got staging reader");
+impl<A: Attribute> IntoIterator for LmdbCursor<A> {
+    type Item = (LmdbInstance, LmdbInstance);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        let dbs = vec![
+            (self.staging_cas_db.lmdb, self.cas_db.lmdb),
+            (self.staging_eav_db.lmdb, self.eav_db.lmdb),
+        ];
+        dbs.into_iter()
+    }
+}
 
-        let env_lock = self.cas_db.lmdb.rkv().write().unwrap();
-        trace!("writer: commit_internal got env write lock");
-        let mut writer = env_lock.write().unwrap();
-        trace!("writer: commit_internal got writer");
+impl<A: Attribute> Into<Vec<(LmdbInstance, LmdbInstance)>> for LmdbCursor<A> {
+    fn into(self) -> Vec<(LmdbInstance, LmdbInstance)> {
+        let x = self.into_iter();
 
-        let copy_result = self
-            .staging_cas_db
-            .copy_all(&staging_reader, &self.cas_db, &mut writer);
+        let mut dbs = Vec::new();
+        for v in x {
+            dbs.push(v);
+        }
+        dbs
+    }
+}
+
+trait LmdbScratchSpace {
+    fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)>;
+}
+
+impl<A: Attribute> LmdbScratchSpace for LmdbCursor<A> {
+    fn dbs(self) -> Vec<(LmdbInstance, LmdbInstance)> {
+        self.into()
+    }
+}
+
+/// Internal commit function which extracts `StoreError::MapFull` into the success value of
+/// a result where `true` indicates the commit is successful, and `false` means the map was
+/// full and retry is required with the newly allocated map size.
+fn commit_internal(
+    // [(staging, primary)]
+    dbs: Vec<(LmdbInstance, LmdbInstance)>,
+) -> PersistenceResult<bool> {
+    let opt = dbs.iter().next();
+
+    if opt.is_none() {
+        return Ok(true);
+    }
+
+    let (staging_rkv, prim_rkv) = opt
+        .map(|(staging, prim)| (staging.rkv(), prim.rkv()))
+        .unwrap();
+
+    trace!("writer: commit_internal start");
+    let staging_env_lock = staging_rkv.read().unwrap();
+    trace!("writer: commit_internal got staging env lock");
+    let staging_reader = staging_env_lock.read().map_err(to_api_error)?;
+    trace!("writer: commit_internal got staging reader");
+
+    let env_lock = prim_rkv.write().unwrap();
+    trace!("writer: commit_internal got env write lock");
+    let mut writer = env_lock.write().unwrap();
+    trace!("writer: commit_internal got writer");
+
+    for (primary_db, staging_db) in &dbs {
+        let copy_result = staging_db.copy_all(&staging_reader, &primary_db, &mut writer);
 
         if is_store_full_result(&copy_result) {
             drop(writer);
@@ -61,52 +110,40 @@ impl<A: Attribute + Sync + Send + DeserializeOwned> LmdbCursor<A> {
             return Ok(false);
         }
         copy_result.map_err(to_api_error)?;
-
-        let copy_result = self
-            .staging_eav_db
-            .copy_all(&staging_reader, &self.eav_db, &mut writer);
-
-        if is_store_full_result(&copy_result) {
-            drop(writer);
-            trace!("writer: commit_internal store full while adding eav data");
-            let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-            env_lock
-                .set_map_size(map_size * map_growth_factor())
-                .map_err(to_api_error)?;
-            return Ok(false);
-        }
-
-        drop(staging_reader);
-        drop(staging_env_lock);
-        writer
-            .commit()
-            .map(|()| {
-                trace!("writer: commit_internal success");
-                Ok(true)
-            })
-            .unwrap_or_else(|e| {
-                trace!("writer: commit_internal error on commit");
-                if is_store_full_error(&e) {
-                    trace!("writer: commit_internal store full on commit");
-                    let map_size = env_lock.info().map_err(to_api_error)?.map_size();
-                    env_lock
-                        .set_map_size(map_size * map_growth_factor())
-                        .map_err(to_api_error)?;
-                    Ok(false)
-                } else {
-                    trace!("writer: commit_internal generic error on commit");
-                    Err(to_api_error(e))
-                }
-            })
     }
+
+    drop(staging_reader);
+    drop(staging_env_lock);
+    writer
+        .commit()
+        .map(|()| {
+            trace!("writer: commit_internal success");
+            Ok(true)
+        })
+        .unwrap_or_else(|e| {
+            trace!("writer: commit_internal error on commit");
+            if is_store_full_error(&e) {
+                trace!("writer: commit_internal store full on commit");
+                let map_size = env_lock.info().map_err(to_api_error)?.map_size();
+                env_lock
+                    .set_map_size(map_size * map_growth_factor())
+                    .map_err(to_api_error)?;
+                Ok(false)
+            } else {
+                trace!("writer: commit_internal generic error on commit");
+                Err(to_api_error(e))
+            }
+        })
 }
 
 impl<A: Attribute + Sync + Send + DeserializeOwned> holochain_persistence_api::txn::Writer
     for LmdbCursor<A>
 {
     fn commit(self) -> PersistenceResult<()> {
+        let dbs: Vec<(LmdbInstance, LmdbInstance)> = self.into();
+
         loop {
-            let committed = self.commit_internal()?;
+            let committed = commit_internal(dbs.clone())?;
             if committed {
                 return Ok(());
             }
@@ -171,7 +208,6 @@ impl<A: Attribute> FetchContent for LmdbCursor<A> {
             maybe_content
         );
         if let Some(content) = maybe_content {
-            self.staging_cas_db.add(&content)?;
             Ok(Some(content))
         } else {
             Ok(None)
@@ -213,9 +249,6 @@ impl<A: Attribute + serde::de::DeserializeOwned> FetchEavi<A> for LmdbCursor<A> 
 
         let eavis = self.eav_db.fetch_eavi(query)?;
 
-        for eavi in &eavis {
-            self.staging_eav_db.add_eavi(eavi)?;
-        }
         Ok(eavis)
     }
 }
@@ -238,6 +271,145 @@ pub struct LmdbCursorProvider<A: Attribute> {
 
     /// Environment flags for staging databases.
     staging_env_flags: Option<EnvironmentFlags>,
+}
+
+pub struct LmdbEnvironment {
+    /// Path prefix to generate staging databases
+    staging_path_prefix: PathBuf,
+
+    /// Initial map size of staging databases
+    staging_initial_map_size: Option<usize>,
+
+    /// Environment flags for staging databases.
+    staging_env_flags: Option<EnvironmentFlags>,
+    env: LmdbEnv,
+    cursor_providers: UniversalMap<String>,
+}
+
+impl LmdbEnvironment {
+    /// Creates a new environment given the environment path.
+    /// No databases are initially opened for the environment.
+    /// The staging parameters determine the configuration of
+    /// temporary scratch databases.
+    pub fn new<EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
+        env_path: EP,
+        max_dbs: usize,
+        staging_path_prefix: Option<SP>,
+        initial_map_size: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+        staging_initial_map_size: Option<usize>,
+        staging_env_flags: Option<EnvironmentFlags>,
+    ) -> Self {
+        let env = LmdbEnv::new(env_path, max_dbs, initial_map_size, env_flags, None);
+        let staging_path_prefix = staging_path_prefix
+            .map(|p| p.as_ref().to_path_buf())
+            .unwrap_or_else(|| std::env::temp_dir());
+
+        Self {
+            env,
+            cursor_providers: UniversalMap::default(),
+            staging_env_flags,
+            staging_path_prefix,
+            staging_initial_map_size,
+        }
+    }
+
+    /// Adds an EAV and CAS database pair to the environment given
+    /// the database prefix. Returns a key which can be used to access
+    /// a cursor from an `LmdbEnvCursor` instance.
+    pub fn add_database<A: Attribute + 'static>(
+        &mut self,
+        database_prefix: &str,
+    ) -> CursorRwKey<A> {
+        let Self {
+            staging_path_prefix,
+            staging_initial_map_size,
+            staging_env_flags,
+            env,
+            ..
+        } = self;
+
+        let cas_db_name = format!("{}.cas", database_prefix);
+        let eav_db_name = format!("{}.eav", database_prefix);
+        let cas_db = env.open_database(cas_db_name.as_str());
+        let eav_db = env.open_database(eav_db_name.as_str());
+
+        let cursor_provider: LmdbCursorProvider<A> = LmdbCursorProvider {
+            cas_db: LmdbStorage::wrap(cas_db),
+            eav_db: EavLmdbStorage::wrap(eav_db),
+            staging_path_prefix: staging_path_prefix.clone(),
+            staging_env_flags: *staging_env_flags,
+            staging_initial_map_size: *staging_initial_map_size,
+        };
+
+        let key = Key::new(database_prefix.to_string());
+        self.cursor_providers.insert(key.clone(), cursor_provider);
+        let key_ret = key.with_value_type::<Box<dyn CursorRw<A>>>();
+        key_ret
+    }
+}
+
+impl Environment for LmdbEnvironment {
+    type EnvCursor = LmdbEnvCursor;
+    fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor> {
+        Ok(LmdbEnvCursor::new(self))
+    }
+}
+
+impl Writer for LmdbEnvCursor {
+    fn commit(self) -> PersistenceResult<()> {
+        loop {
+            let committed = commit_internal(self.dbs.clone())?;
+            if committed {
+                return Ok(());
+            }
+        }
+    }
+}
+
+pub struct LmdbEnvCursor {
+    env: Arc<LmdbEnvironment>,
+    dbs: Vec<(LmdbInstance, LmdbInstance)>,
+    cursors: UniversalMap<String>,
+}
+
+impl LmdbEnvCursor {
+    fn new(env: Arc<LmdbEnvironment>) -> Self {
+        Self {
+            env,
+            dbs: Vec::new(),
+            cursors: UniversalMap::new(),
+        }
+    }
+}
+
+impl EnvCursor for LmdbEnvCursor {
+    fn cursor_rw<A: 'static + Attribute + DeserializeOwned>(
+        &mut self,
+        key: &CursorRwKey<A>,
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+        let maybe_cursor = self
+            .cursors
+            .get(key)
+            .map(|x| Ok(x.clone()))
+            .unwrap_or_else(|| Err(format!("Cursor {:?} does not exist", key).into()));
+
+        if maybe_cursor.is_ok() {
+            return maybe_cursor;
+        } else {
+            let prov_key: Key<String, LmdbCursorProvider<A>> = Key::with_value_type(key);
+            let provider: Option<&LmdbCursorProvider<A>> = self.env.cursor_providers.get(&prov_key);
+            if let Some(provider) = provider {
+                let cursor = Box::new(CursorProvider::create_cursor(provider)?);
+                let mut dbs = cursor.clone().dbs();
+                self.dbs.append(&mut dbs);
+                let _result = self.cursors.insert(key.clone(), cursor);
+                self.cursor_rw(key)
+            } else {
+                Err(format!("Cursor provider {:?} does not exist", prov_key).into())
+            }
+        }
+    }
 }
 
 /// Name of CAS staging database
@@ -294,7 +466,7 @@ impl<A: Attribute + DeserializeOwned> CursorProvider<A> for LmdbCursorProvider<A
     }
 
     fn create_cursor(&self) -> PersistenceResult<Self::Cursor> {
-        self.create_cursor_rw()
+        CursorProvider::create_cursor_rw(self)
     }
 }
 
@@ -355,7 +527,6 @@ pub mod tests {
             storage::ExampleLink,
         },
         eav::{AddEavi, Attribute, EntityAttributeValueIndex, ExampleAttribute},
-        txn::*,
     };
     use tempfile::tempdir;
 
@@ -385,6 +556,27 @@ pub mod tests {
             Some(1024 * 1024),
             None,
         )
+    }
+
+    fn new_test_environment<EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
+        env_path: EP,
+        staging_path_prefix: Option<SP>,
+        initial_map_size: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+        staging_initial_map_size: Option<usize>,
+        staging_env_flags: Option<EnvironmentFlags>,
+    ) -> LmdbEnvironment {
+        let max_dbs = 100;
+        let env = LmdbEnvironment::new(
+            env_path,
+            max_dbs,
+            staging_path_prefix,
+            initial_map_size,
+            env_flags,
+            staging_initial_map_size,
+            staging_env_flags,
+        );
+        env
     }
 
     #[test]
@@ -580,5 +772,42 @@ pub mod tests {
         assert!(cursor.add(&entity_content).is_ok());
         assert!(cursor.add_eavi(&eavi).is_ok());
         assert!(cursor.commit().is_ok());
+    }
+
+    #[test]
+    fn can_commit_transactions_across_databases() {
+        enable_logging_for_test(true);
+        let temp = tempdir().expect("test was supposed to create temp dir");
+        let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
+        let staging_path: Option<String> = None;
+        let mut environment: LmdbEnvironment = new_test_environment(
+            temp_path,
+            staging_path,
+            Some(1024 * 1024),
+            None,
+            Some(1024 * 1024),
+            None,
+        );
+
+        let key = environment.add_database::<ExampleAttribute>("test_dbs");
+
+        let environment = Arc::new(environment);
+        let data: Vec<u8> = Vec::from(format!("{}", "abc").as_bytes());
+
+        let entity_content: Content = RawString::from("red").into();
+        let eavi = EntityAttributeValueIndex::new(
+            &holochain_persistence_api::hash::HashString::from(data.clone()),
+            &ExampleAttribute::WithoutPayload,
+            &data.into(),
+        )
+        .unwrap();
+
+        let mut env_cursor: LmdbEnvCursor = environment.create_cursor().unwrap();
+        let cursor_key: Key<_, Box<dyn CursorRw<ExampleAttribute>>> = key.clone().with_value_type();
+
+        let cursor = env_cursor.cursor_rw(&cursor_key).unwrap();
+        assert!(cursor.add(&entity_content).is_ok());
+        assert!(cursor.add_eavi(&eavi).is_ok());
+        assert!(env_cursor.commit().is_ok());
     }
 }

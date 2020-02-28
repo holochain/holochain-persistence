@@ -2,6 +2,7 @@ use crate::{
     cas::storage::{ExampleContentAddressableStorage, ExampleLink},
     eav::ExampleEntityAttributeValueStorage,
     has_uuid::HasUuid,
+    univ_map::*,
 };
 /// Transactional trait extensions to the CAS and EAV persistence
 use crate::{
@@ -43,22 +44,18 @@ impl<W: Writer> WriterDyn for W {
 /// Cursor interface over both CAS and EAV databases.
 pub trait Cursor<A: Attribute>: FetchContent + FetchEavi<A> + HasUuid {}
 
-/// Writeable cursor interface over both CAS and EAV databases. Provides transactional support
-/// by providing a `Writer` across both of them.
-pub trait CursorRw<A: Attribute>: Writer + Cursor<A> + AddContent + AddEavi<A> {}
+/// Writeable cursor interface over both CAS and EAV databases.
+pub trait CursorRw<A: Attribute>: Cursor<A> + AddContent + AddEavi<A> {}
 
 /// Dynamic cursor interface over both CAS and EAV databases. Provides transactional support
 /// by providing a `WriterDyn` across both of them. Useful for situations where
 /// the concrete database is abstracted over as a trait object.
 pub trait CursorRwDyn<A: Attribute>: CursorRw<A> + WriterDyn {}
 
-impl<A: Attribute, C: Cursor<A> + Writer + AddContent + AddEavi<A>> CursorRw<A> for C {}
-impl<A: Attribute, C: CursorRw<A>> CursorRwDyn<A> for C {}
+impl<A: Attribute, C: Cursor<A> + AddContent + AddEavi<A>> CursorRw<A> for C {}
+impl<A: Attribute, C: CursorRw<A> + WriterDyn> CursorRwDyn<A> for C {}
 
-// TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> Cursor<A>);
-
-// TODO Should cursor's even be cloneable? SPIKE this
 clone_trait_object!(<A:Attribute> CursorRw<A>);
 
 /// A write that does nothing, for testing or for
@@ -229,10 +226,11 @@ impl<
 pub trait CursorProvider<A: Attribute> {
     /// The type of a cursor for this cursor provider
     type Cursor: Cursor<A>;
-    type CursorRw: CursorRw<A>;
+    type CursorRw: CursorRw<A> + Writer;
 
-    /// Creates a new read/write cursor. Use carefully as one instance of a cursor
-    /// may block another, especially when cursors are mutating the primary store.
+    /// Creates a new read/write cursor. Use carefully as one instance
+    /// of a cursor may block another, especially when cursors are mutating
+    /// the primary store.
     fn create_cursor_rw(&self) -> PersistenceResult<Self::CursorRw>;
 
     /// Creates a new read cursor.
@@ -240,8 +238,9 @@ pub trait CursorProvider<A: Attribute> {
 }
 
 /// Creates cursors over both EAV and CAS instances. May acquire read or write
-/// resources to do so, depending on implementation. A pure trait object version, allowing
-/// users to not care about the particular Cursor, CAS, or EAV implementation.
+/// resources to do so, depending on implementation. A pure trait object
+/// version, allowing users to not care about the particular Cursor, CAS, or
+/// EAV implementation.
 ///
 /// Some cursors may cascade over temporary (aka "scratch") databases to improve
 /// concurrency performance.
@@ -261,7 +260,7 @@ pub trait CursorProviderDyn<A: Attribute>: Send + Sync + Debug {
 impl<
         A: Attribute,
         C: Cursor<A> + 'static,
-        CW: CursorRw<A> + 'static,
+        CW: CursorRw<A> + 'static + Writer,
         CP: CursorProvider<A, Cursor = C, CursorRw = CW> + Send + Sync + Debug,
     > CursorProviderDyn<A> for CP
 {
@@ -293,6 +292,43 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
     fn eav(&self) -> Self::Eav;
 
     fn get_id(&self) -> Uuid;
+}
+
+pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
+pub trait EnvCursor: Writer {
+    // TODO Alternatively: type CursorRw : CursorRw<A>;
+    fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
+        &mut self,
+        key: &CursorRwKey<A>,
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>>;
+}
+
+pub trait Environment {
+    type EnvCursor: EnvCursor;
+    fn create_cursor(self: Arc<Self>) -> PersistenceResult<Self::EnvCursor>;
+}
+
+pub struct DefaultEnvironment;
+
+impl DefaultEnvironment {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl EnvCursor for DefaultEnvironment {
+    fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
+        &mut self,
+        _key: &CursorRwKey<A>,
+    ) -> PersistenceResult<Box<dyn CursorRw<A>>> {
+        Err("cross transactional read/write cursors unsupported".into())
+    }
+}
+
+impl Writer for DefaultEnvironment {
+    fn commit(self) -> PersistenceResult<()> {
+        Err("cross transactional cursors unsupported: commit failed".into())
+    }
 }
 
 /// A high level api which brings together a CAS, EAV, and
