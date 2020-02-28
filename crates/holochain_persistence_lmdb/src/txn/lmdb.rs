@@ -1,6 +1,6 @@
 use crate::{
     cas::lmdb::LmdbStorage,
-    common::{map_growth_factor, LmdbInstance},
+    common::{map_growth_factor, LmdbEnv, LmdbInstance},
     eav::lmdb::EavLmdbStorage,
     error::{is_store_full_error, is_store_full_result, to_api_error},
 };
@@ -273,14 +273,72 @@ pub struct LmdbCursorProvider<A: Attribute> {
     staging_env_flags: Option<EnvironmentFlags>,
 }
 
-#[derive(Clone)]
 pub struct LmdbEnvironment {
-    cursor_providers: Arc<UniversalMap<String>>,
+    /// Path prefix to generate staging databases
+    staging_path_prefix: PathBuf,
+
+    /// Initial map size of staging databases
+    staging_initial_map_size: Option<usize>,
+
+    /// Environment flags for staging databases.
+    staging_env_flags: Option<EnvironmentFlags>,
+    env: LmdbEnv,
+    cursor_providers: UniversalMap<String>,
 }
 
 impl LmdbEnvironment {
-    pub fn new(cursor_providers: Arc<UniversalMap<String>>) -> Self {
-        Self { cursor_providers }
+    pub fn new<EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
+        env_path: EP,
+        max_dbs: usize,
+        staging_path_prefix: Option<SP>,
+        initial_map_size: Option<usize>,
+        env_flags: Option<EnvironmentFlags>,
+        staging_initial_map_size: Option<usize>,
+        staging_env_flags: Option<EnvironmentFlags>,
+    ) -> Self {
+        let env = LmdbEnv::new(env_path, max_dbs, initial_map_size, env_flags, None);
+        let staging_path_prefix = staging_path_prefix
+            .map(|p| p.as_ref().to_path_buf())
+            .unwrap_or_else(|| std::env::temp_dir());
+
+        Self {
+            env,
+            cursor_providers: UniversalMap::default(),
+            staging_env_flags,
+            staging_path_prefix,
+            staging_initial_map_size,
+        }
+    }
+
+    pub fn add_database<A: Attribute + 'static>(
+        &mut self,
+        database_prefix: &str,
+    ) -> CursorRwKey<A> {
+        let Self {
+            staging_path_prefix,
+            staging_initial_map_size,
+            staging_env_flags,
+            env,
+            ..
+        } = self;
+
+        let cas_db_name = format!("{}.cas", database_prefix);
+        let eav_db_name = format!("{}.eav", database_prefix);
+        let cas_db = env.open_database(cas_db_name.as_str());
+        let eav_db = env.open_database(eav_db_name.as_str());
+
+        let cursor_provider: LmdbCursorProvider<A> = LmdbCursorProvider {
+            cas_db: LmdbStorage::wrap(cas_db.clone()),
+            eav_db: EavLmdbStorage::wrap(eav_db.clone()),
+            staging_path_prefix: staging_path_prefix.clone(),
+            staging_env_flags: staging_env_flags.clone(),
+            staging_initial_map_size: staging_initial_map_size.clone(),
+        };
+
+        let key = Key::new(database_prefix.to_string());
+        self.cursor_providers.insert(key.clone(), cursor_provider);
+        let key_ret = key.with_value_type::<Box<dyn CursorRw<A>>>();
+        key_ret
     }
 }
 
@@ -493,50 +551,25 @@ pub mod tests {
         )
     }
 
-    fn new_test_cursor_provider<
-        A: Attribute + DeserializeOwned,
-        EP: AsRef<Path> + Clone,
-        SP: AsRef<Path>,
-    >(
+    fn new_test_environment<EP: AsRef<Path> + Clone, SP: AsRef<Path>>(
         env_path: EP,
         staging_path_prefix: Option<SP>,
         initial_map_size: Option<usize>,
         env_flags: Option<EnvironmentFlags>,
         staging_initial_map_size: Option<usize>,
         staging_env_flags: Option<EnvironmentFlags>,
-    ) -> LmdbCursorProvider<A> {
-        let cas_db_name = crate::cas::lmdb::CAS_BUCKET;
-        let eav_db_name = crate::eav::lmdb::EAV_BUCKET;
-        let db_names = vec![cas_db_name, eav_db_name];
-
-        // Ensure exactly one enviroment for the primary database by taking
-        // advantage of the `rkv::Manager`.
-        let use_rkv_manager = true;
-
-        let dbs = LmdbInstance::new_all(
-            db_names.as_slice(),
+    ) -> LmdbEnvironment {
+        let max_dbs = 100;
+        let env = LmdbEnvironment::new(
             env_path,
+            max_dbs,
+            staging_path_prefix,
             initial_map_size,
             env_flags,
-            use_rkv_manager.into(),
-        );
-
-        let cas_db = LmdbStorage::wrap(dbs.get(&cas_db_name.to_string()).unwrap().clone());
-        let eav_db: EavLmdbStorage<A> =
-            EavLmdbStorage::wrap(dbs.get(&eav_db_name.to_string()).unwrap().clone());
-
-        let staging_path_prefix = staging_path_prefix
-            .map(|p| p.as_ref().to_path_buf())
-            .unwrap_or_else(|| std::env::temp_dir());
-
-        let cursor_provider = LmdbCursorProvider {
-            cas_db: cas_db.clone(),
-            eav_db: eav_db.clone(),
-            staging_path_prefix,
             staging_initial_map_size,
             staging_env_flags,
-        };
-        cursor_provider
+        );
+        env
     }
 
     #[test]
@@ -740,7 +773,7 @@ pub mod tests {
         let temp = tempdir().expect("test was supposed to create temp dir");
         let temp_path = String::from(temp.path().to_str().expect("temp dir could not be string"));
         let staging_path: Option<String> = None;
-        let manager: LmdbCursorProvider<ExampleAttribute> = new_test_cursor_provider(
+        let mut environment: LmdbEnvironment = new_test_environment(
             temp_path,
             staging_path,
             Some(1024 * 1024),
@@ -749,12 +782,9 @@ pub mod tests {
             None,
         );
 
-        let mut univ_map = UniversalMap::new();
+        let key = environment.add_database::<ExampleAttribute>("test_dbs");
 
-        let key = Key::new("test_dbs".to_string());
-
-        let _result = univ_map.insert(key.clone(), manager);
-        let environment = Arc::new(LmdbEnvironment::new(Arc::new(univ_map)));
+        let environment = Arc::new(environment);
         let data: Vec<u8> = Vec::from(format!("{}", "abc").as_bytes());
 
         let entity_content: Content = RawString::from("red").into();

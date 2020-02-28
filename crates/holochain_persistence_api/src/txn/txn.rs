@@ -295,8 +295,8 @@ pub trait PersistenceManager<A: Attribute>: CursorProvider<A> {
 }
 
 pub type CursorRwKey<A> = Key<String, Box<dyn CursorRw<A>>>;
-
 pub trait EnvCursor: Writer {
+    // TODO Alternatively: type CursorRw : CursorRw<A>;
     fn cursor_rw<A: Attribute + 'static + serde::de::DeserializeOwned>(
         &mut self,
         key: &CursorRwKey<A>,
