@@ -3,7 +3,7 @@ use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 pub struct Key<K, V>(K, PhantomData<V>);
 
 #[derive(Shrinkwrap)]
-pub struct UniversalMap<K>(HashMap<K, Box<dyn Any>>);
+pub struct UniversalMap<K>(HashMap<K, Box<dyn Any + Send + Sync>>);
 
 impl<K, V> Key<K, V> {
     pub fn new(key: K) -> Self {
@@ -39,12 +39,12 @@ impl<K: Eq + Hash> UniversalMap<K> {
         Self(HashMap::new())
     }
 
-    pub fn insert<V: 'static>(&mut self, key: Key<K, V>, value: V) -> Option<Box<dyn Any>> {
+    pub fn insert<V: 'static + Send + Sync>(&mut self, key: Key<K, V>, value: V) -> Option<Box<dyn Any + Send + Sync>> {
         let result = self.0.insert(key.0, Box::new(value));
         result
     }
 
-    pub fn get<V: 'static>(&self, key: &Key<K, V>) -> Option<&V> {
+    pub fn get<V: 'static + Send + Sync>(&self, key: &Key<K, V>) -> Option<&V> {
         match self.0.get(&key.0) {
             Some(value) => value.downcast_ref::<V>(),
             None => None,
@@ -68,11 +68,18 @@ pub mod tests {
     fn univ_map_can_get_entries() {
         let mut univ_map = UniversalMap::default();
 
+        #[derive(Clone, Debug, PartialEq)]
+        struct Val(String);
+
+        let val = Val("ghi".to_string());
         let key: Key<_, u8> = Key::new("abc");
         let key2: Key<_, bool> = Key::new("def");
+        let key3: Key<_, Val> = Key::new("ghi");
         univ_map.insert(key.clone(), 123);
         univ_map.insert(key2.clone(), true);
+        univ_map.insert(key3.clone(), val.clone());
         assert_eq!(univ_map.get(&key), Some(&123));
-        assert_eq!(univ_map.get(&key2), Some(&true))
+        assert_eq!(univ_map.get(&key2), Some(&true));
+        assert_eq!(univ_map.get(&key3), Some(&val));
     }
 }
