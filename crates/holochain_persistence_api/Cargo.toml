@@ -35,7 +35,7 @@ objekt= "=0.1.2"
 holochain_json_api = "=0.0.23"
 holochain_json_derive = "=0.0.23"
 uuid = { version = "=0.7.1", features = ["v4"] }
-rand = "0.7.2"
+rand = "=0.7.3"
 
 [dev-dependencies]
 maplit = "=1.0.1"
