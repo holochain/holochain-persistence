@@ -25,9 +25,9 @@ lazy_static = "=1.4.0"
 glob = "=0.3.0"
 uuid = { version = "=0.7.1", features = ["v4"] }
 bencher = "=0.1.5"
-rand = "0.7.2"
-rkv = "0.10.2"
-lmdb-rkv = "0.12.3"
+rand = "=0.7.2"
+rkv = "=0.10.4"
+lmdb-rkv = "=0.14.0"
 holochain_logging = "=0.0.7"
 
 [dev-dependencies]
