@@ -1,11 +1,11 @@
 use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 #[derive(Clone, Debug)]
-pub struct Key<K, V>(K, PhantomData<V>);
+pub struct Key<K: Send + Sync, V>(K, PhantomData<V>);
 
 #[derive(Shrinkwrap)]
-pub struct UniversalMap<K>(HashMap<K, Box<dyn Any + Send + Sync>>);
+pub struct UniversalMap<K: Send + Sync>(HashMap<K, Box<dyn Any + Send + Sync>>);
 
-impl<K, V> Key<K, V> {
+impl<K: Send + Sync, V> Key<K, V> {
     pub fn new(key: K) -> Self {
         Self(key, PhantomData)
     }
@@ -15,26 +15,26 @@ impl<K, V> Key<K, V> {
     }
 }
 
-impl<K: Clone, V> Key<K, V> {
+impl<K: Clone + Send + Sync, V> Key<K, V> {
     pub fn with_value_type<VV>(&self) -> Key<K, VV> {
         let key: Key<K, VV> = Key::new(self.0.clone());
         key
     }
 }
 
-impl<K: Hash + Eq + PartialEq, V> From<K> for Key<K, V> {
+impl<K: Hash + Eq + PartialEq + Send + Sync, V> From<K> for Key<K, V> {
     fn from(key: K) -> Self {
         Self::new(key)
     }
 }
 
-impl<K: Hash + Eq> Default for UniversalMap<K> {
+impl<K: Hash + Eq + Send + Sync> Default for UniversalMap<K> {
     fn default() -> Self {
         UniversalMap::new()
     }
 }
 
-impl<K: Eq + Hash> UniversalMap<K> {
+impl<K: Eq + Hash + Send + Sync> UniversalMap<K> {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
