@@ -14,7 +14,7 @@ repository = "https://github.com/holochain/holochain-persistence"
 
 [dependencies]
 serde = "1.0.104"
-serde_json = { version = "1.0.47", features = ["preserve_order"] }
+serde_json = { version = "1.0.48", features = ["preserve_order"] }
 serde_derive = "1.0.104"
 serde_test = "1.0.104"
 multihash = "0.8.0"

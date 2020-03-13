@@ -19,7 +19,7 @@ serde = "1.0.104"
 lazy_static = "1.4.0"
 regex = "1.1.2"
 serde_derive = "1.0.104"
-serde_json = { version = "1.0.47", features = ["preserve_order"] }
+serde_json = { version = "1.0.48", features = ["preserve_order"] }
 multihash = "0.8.0"
 futures-preview = "0.3.0-alpha.17"
 futures-core-preview = "0.3.0-alpha.17"
