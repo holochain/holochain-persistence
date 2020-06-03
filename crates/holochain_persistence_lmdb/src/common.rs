@@ -74,6 +74,7 @@ impl LmdbInstance {
                 trace!("Insufficient space in MMAP, doubling and trying again");
                 let map_size = env.info()?.map_size();
                 env.set_map_size(map_size * 2)?;
+                drop(env);
                 self.add(key, value)
             }
             r => r, // preserve any other errors
